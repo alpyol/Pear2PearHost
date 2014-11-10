@@ -4,10 +4,10 @@ var startButton = document.getElementById("startButton");
 var sendButton = document.getElementById("sendButton");
 var closeButton = document.getElementById("closeButton");
 startButton.disabled = false;
-sendButton.disabled = true;
+sendButton.disabled  = true;
 closeButton.disabled = true;
 startButton.onclick = createConnection;
-sendButton.onclick = sendData;
+sendButton.onclick  = sendData;
 closeButton.onclick = closeDataChannels;
 
 function trace(text) {
@@ -31,7 +31,7 @@ function createConnection() {
         trace('createDataChannel() failed with exception: ' + e.message);
     }
     localPeerConnection.onicecandidate = gotLocalCandidate;
-    sendChannel.onopen = handleSendChannelStateChange;
+    sendChannel.onopen  = handleSendChannelStateChange;
     sendChannel.onclose = handleSendChannelStateChange;
 
     window.remotePeerConnection = new webkitRTCPeerConnection(servers,
@@ -39,7 +39,7 @@ function createConnection() {
     trace('Created remote peer connection object remotePeerConnection');
 
     remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
-    remotePeerConnection.ondatachannel = gotReceiveChannel;
+    remotePeerConnection.ondatachannel  = gotReceiveChannel;
 
     localPeerConnection.createOffer(gotLocalDescription);
     startButton.disabled = true;
@@ -60,7 +60,7 @@ function closeDataChannels() {
     trace('Closed data channel with label: ' + receiveChannel.label);
     localPeerConnection.close();
     remotePeerConnection.close();
-    localPeerConnection = null;
+    localPeerConnection  = null;
     remotePeerConnection = null;
     trace('Closed peer connections');
     startButton.disabled = false;
@@ -105,13 +105,13 @@ function gotReceiveChannel(event) {
     trace('Receive Channel Callback');
     receiveChannel = event.channel;
     receiveChannel.onmessage = handleMessage;
-    receiveChannel.onopen = handleReceiveChannelStateChange;
+    receiveChannel.onopen  = handleReceiveChannelStateChange;
     receiveChannel.onclose = handleReceiveChannelStateChange;
 }
 
 function handleMessage(event) {
     trace('Received message: ' + event.data);
-    document.getElementById("dataChannelReceive").value = event.data;
+    document.getElementById("dataChannelReceive1").value = event.data;
 }
 
 function handleSendChannelStateChange() {
