@@ -36,19 +36,18 @@ roomProcess = do
     liftIO $ Prelude.putStrLn hello
     roomProcess
 
-roomSocketProcess :: WS.Connection -> IO ()
+roomSocketProcess :: WS.Connection -> Process ()
 roomSocketProcess conn = do
-    -- Prelude.putStrLn "try receive data"
-    result <- WS.receive conn
+    result <- liftIO $ WS.receive conn
     case result of
         (WS.ControlMessage msg) -> do
-            --Prelude.putStrLn "did receiveData command: "
+            liftIO $ Prelude.putStrLn "did receiveData command: "
             return (BS.pack "got cmd")
         (WS.DataMessage (WS.Text msg)) -> do
-            --Prelude.putStrLn ("did receiveData Msg: " ++ BS.unpack msg)
+            liftIO $ Prelude.putStrLn ("did receiveData Msg 1: " ++ BS.unpack msg)
             return msg
         (WS.DataMessage (WS.Binary msg)) -> do
-            --Prelude.putStrLn ("did receiveData Msg: " ++ BS.unpack msg)
+            liftIO $ Prelude.putStrLn ("did receiveData Msg 2: " ++ BS.unpack msg)
             return (BS.pack "got data")
     roomSocketProcess conn
 
@@ -57,10 +56,8 @@ roomApplication node pending = do
     conn <- WS.acceptRequest pending
 
     liftIO $ Prelude.putStrLn "got new connection"
-    
-    processID <- forkProcess node roomProcess
-
-    roomSocketProcess conn
+    roomProcessID <- forkProcess node roomProcess
+    runProcess node $ roomSocketProcess conn
 
     return ()
 
