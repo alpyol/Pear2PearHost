@@ -80,7 +80,9 @@ function processOnLoadImage(imageBlob, url)
     var imageAdded = {type: "imageAdded", url: url};
 
     if (roomSocket == null) {
-        roomSocket = new WebSocket("ws://localhost:27001");
+        console.log("try create WebSocket !!!");
+        roomSocket = new WebSocket("ws://localhost:27001/ws");
+        console.log("create WebSocket !!!");
 
         roomSocketQueue.push(imageAdded);
 
