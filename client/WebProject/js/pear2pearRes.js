@@ -2,6 +2,8 @@
  * Created by vladimirgorbenko on 09.11.14.
  */
 
+//TODO !!!! send file chunked - http://www.html5rocks.com/en/tutorials/webrtc/basics/
+
 //init custom elements
 (function() {
 
@@ -70,14 +72,17 @@ function createImageBlobURL(blob)
 
 var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
 var roomSocketQueue = [];
-//var roomSocket = new WebSocket("ws://localhost:27001/ws");
 
 function processOnLoadImage(imageBlob, url)
 {
     cachedImageBlobsByURL[url] = imageBlob;
 
+    var imageAdded = {type: "imageAdded", url: url};
+
     if (roomSocket == null) {
-        roomSocket = new WebSocket("ws://localhost:27001/ws");
+        roomSocket = new WebSocket("ws://localhost:27001");
+
+        roomSocketQueue.push(imageAdded);
 
         roomSocket.onopen = function() {
 
@@ -85,7 +90,10 @@ function processOnLoadImage(imageBlob, url)
             roomSocketQueue = [];
 
             for (var i=0; i<roomSocketQueueCopy.length; i++) {
-                roomSocket.send(roomSocketQueueCopy[i])
+
+                //TODO JSON.stringify ???
+                var sendStr = JSON.stringify(roomSocketQueueCopy[i]);
+                roomSocket.send(sendStr)
             }
         };
 
@@ -97,18 +105,28 @@ function processOnLoadImage(imageBlob, url)
         roomSocket.onerror = function(error) {
 
             console.log("room web socket error: " + error);
-            //TODO try recconect after delay
+            //TODO try reconnect after delay
         };
-    }
 
-    var imageAdded = { type: "imageAdded", url: url };
+        roomSocket.onclose = function(event) {
+            if (event.wasClean) {
+                alert('Connection closed clean' + ' Code: ' + event.code + ' reason: ' + event.reason);
+            } else {
+                alert('Connection broken' + ' Code: ' + event.code + ' reason: ' + event.reason); // например, "убит" процесс сервера
+            }
+        };
+    } else {
 
-    if (roomSocket.readyState == WebSocket.OPEN) {
+        if (roomSocket.readyState == WebSocket.OPEN) {
 
-        roomSocket.send(imageAdded)
-    } else if (roomSocket.readyState == WebSocket.CONNECTING) {
+            //TODO JSON.stringify ???
+            roomSocket.send(imageAdded)
+        } else if (roomSocket.readyState == WebSocket.CONNECTING) {
 
-        roomSocketQueue.push(imageAdded)
+            roomSocketQueue.push(imageAdded)
+        } else {
+            console.log("roomSocket.readyState: " + roomSocket.readyState)
+        }
     }
 }
 
