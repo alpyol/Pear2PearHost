@@ -1,10 +1,6 @@
-{-# LANGUAGE TypeFamilies          #-}
-{-# LANGUAGE QuasiQuotes           #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE DeriveDataTypeable    #-}
-{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
 module RoomActors (runRoomServer) where
@@ -22,6 +18,8 @@ import Data.DeriveTH
 import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
 import Data.Aeson.Types
 
+import ActorsMessages (URLAddedMessage)
+
 data SocketMessage = SocketMessage BS.ByteString deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SocketMessage )
 
@@ -30,37 +28,52 @@ data RoomState = RoomState { getRoomURLs :: [String] }
 initialRoomState :: RoomState 
 initialRoomState = RoomState []
 
-logMessage :: BS.ByteString -> Process RoomState
+logMessage :: BS.ByteString -> Process (Maybe RoomState)
 logMessage msg = do
-    say $ "got ByteString: " ++ BS.unpack msg ++ "\r\n"
-    return initialRoomState
+    say $ "got unhandled string: " ++ BS.unpack msg ++ "\r\n"
+    return Nothing
 
-processSocketMesssage :: SocketMessage -> Process RoomState
-processSocketMesssage (SocketMessage msg) = do
+processAddImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
+processAddImageCmd json state = do
+
     -- {"type":"imageAdded","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
-    let jsonValOpt = AES.decode msg :: Maybe Value
-    case jsonValOpt of
-        (Just (Object jsonVal)) -> do
+    let addedImage :: Maybe String = parseMaybe (.: "url") json
+    case addedImage of
+        (Just addedImage) -> do
+            say $ "TODO process imageAdded object: " ++ addedImage
+            return Nothing
+        Nothing -> do
+            say $ "no image in json: " ++ show json
+            return Nothing
 
-            let cmdType :: Maybe String = parseMaybe (.: "type") jsonVal
-
+jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
+jsonObjectWithType jsonStr = 
+    case AES.decode jsonStr :: Maybe Value of
+        (Just (Object json)) -> do
+            let cmdType :: Maybe String = parseMaybe (.: "type") json
             case cmdType of
-                (Just "imageAdded") ->
-                    say $ "TODO process imageAdded object: " ++ show jsonVal
-                (Just someCmd) -> say $ "got unsupported command: " ++ show jsonVal
-                Nothing -> say $ "no command in kson: " ++ show jsonVal
+                (Just someCmd) -> Right (someCmd, json)
+                Nothing -> Left $ "no command in json: " ++ show json
+        (Just jsonVal) -> Left $ "got unsupported json object: " ++ show jsonVal
+        Nothing -> Left $ "can not parse json object: " ++ show (BS.unpack jsonStr)
 
-        (Just jsonVal) -> say $ "got unsupported json object: " ++ show jsonVal
-        Nothing -> say $ "can not parse json object: " ++ show (BS.unpack msg)
-
-    -- TODO implement this
-    return initialRoomState
+processSocketMesssage :: RoomState -> SocketMessage -> Process (Maybe RoomState)
+processSocketMesssage state (SocketMessage msg) = do
+    case jsonObjectWithType msg of
+        (Right ("imageAdded", json)) -> do
+            processAddImageCmd json state
+        (Right (cmd, json)) -> do
+            say $ "room got unsupported command: " ++ cmd ++ " json: " ++ show json
+            return Nothing
+        Left description -> do
+            say description
+            return Nothing
 
 roomProcess :: RoomState -> Process ()
 roomProcess state = do
     -- Test our matches in order against each message in the queue
-    newState <- receiveWait [match logMessage, match processSocketMesssage]
-    roomProcess newState
+    newState <- receiveWait [match (processSocketMesssage state), match logMessage]
+    roomProcess $ maybe state id newState
 
 roomSocketProcess :: ProcessId -> WS.Connection -> Process ()
 roomSocketProcess processId conn = do
