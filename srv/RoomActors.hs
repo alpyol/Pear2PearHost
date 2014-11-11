@@ -18,15 +18,15 @@ import Data.DeriveTH
 import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
 import Data.Aeson.Types
 
-import ActorsMessages (URLAddedMessage)
+import ActorsMessages (URLAddedMessage(..))
 
 data SocketMessage = SocketMessage BS.ByteString deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SocketMessage )
 
-data RoomState = RoomState { getRoomURLs :: [String] }
+data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId }
 
-initialRoomState :: RoomState 
-initialRoomState = RoomState []
+initialRoomState :: DP.ProcessId -> RoomState 
+initialRoomState supervisor = RoomState [] supervisor
 
 logMessage :: BS.ByteString -> Process (Maybe RoomState)
 logMessage msg = do
@@ -41,6 +41,8 @@ processAddImageCmd json state = do
     case addedImage of
         (Just addedImage) -> do
             say $ "TODO process imageAdded object: " ++ addedImage
+            self <- getSelfPid
+            send (getSupervisor state) (URLAddedMessage self (BS.pack addedImage))
             return Nothing
         Nothing -> do
             say $ "no image in json: " ++ show json
@@ -90,15 +92,15 @@ roomSocketProcess processId conn = do
             -- TODO send die to roomProcess
             return ()
 
-roomApplication :: LocalNode -> WS.PendingConnection -> IO ()
-roomApplication node pending = do
+roomApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
+roomApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
     liftIO $ Prelude.putStrLn "got new connection"
-    roomProcessID <- forkProcess node (roomProcess initialRoomState)
+    roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID)
     runProcess node $ roomSocketProcess roomProcessID conn
 
     return ()
 
-runRoomServer :: LocalNode -> IO ()
-runRoomServer node = WS.runServer "127.0.0.1" 27001 $ roomApplication node
+runRoomServer :: LocalNode -> DP.ProcessId -> IO ()
+runRoomServer node supervisor = WS.runServer "127.0.0.1" 27001 $ roomApplication node supervisor

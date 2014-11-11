@@ -10,5 +10,5 @@ import Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.DeriveTH
 
-data URLAddedMessage = URLAddedMessage DP.ProcessId BS.ByteString deriving (Show, Typeable {-!, Binary !-})
+data URLAddedMessage = URLAddedMessage { getURLOwner :: DP.ProcessId, getURL :: BS.ByteString } deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''URLAddedMessage )
