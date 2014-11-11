@@ -1,7 +1,7 @@
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE OverloadedStrings     #-}
-{-# LANGUAGE DeriveDataTypeable    #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE DeriveDataTypeable  #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module RoomActors (runRoomServer) where
 
@@ -18,10 +18,10 @@ import Data.DeriveTH
 import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
 import Data.Aeson.Types
 
-import ActorsMessages (URLAddedMessage(..))
+import ActorsMessages (FromRoomMsg(..))
 
-data SocketMessage = SocketMessage BS.ByteString deriving (Show, Typeable {-!, Binary !-})
-$( derive makeBinary ''SocketMessage )
+data SocketMsg = SocketMsg BS.ByteString | CloseMsg deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''SocketMsg )
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId }
 
@@ -42,7 +42,7 @@ processAddImageCmd json state = do
         (Just addedImage) -> do
             say $ "TODO process imageAdded object: " ++ addedImage
             self <- getSelfPid
-            send (getSupervisor state) (URLAddedMessage self (BS.pack addedImage))
+            send (getSupervisor state) (URLAddedMsg self (BS.pack addedImage))
             return Nothing
         Nothing -> do
             say $ "no image in json: " ++ show json
@@ -59,8 +59,8 @@ jsonObjectWithType jsonStr =
         (Just jsonVal) -> Left $ "got unsupported json object: " ++ show jsonVal
         Nothing -> Left $ "can not parse json object: " ++ show (BS.unpack jsonStr)
 
-processSocketMesssage :: RoomState -> SocketMessage -> Process (Maybe RoomState)
-processSocketMesssage state (SocketMessage msg) = do
+processSocketMesssage :: RoomState -> SocketMsg -> Process (Maybe RoomState)
+processSocketMesssage state (SocketMsg msg) = do
     case jsonObjectWithType msg of
         (Right ("imageAdded", json)) -> do
             processAddImageCmd json state
@@ -70,6 +70,11 @@ processSocketMesssage state (SocketMessage msg) = do
         Left description -> do
             say description
             return Nothing
+processSocketMesssage state CloseMsg = do
+    self <- getSelfPid
+    send (getSupervisor state) (RoomClosedMsg self)
+    die ("Socket closed - close room" :: String)
+    return Nothing
 
 roomProcess :: RoomState -> Process ()
 roomProcess state = do
@@ -83,10 +88,10 @@ roomSocketProcess processId conn = do
     case result of
         (WS.ControlMessage (WS.Close code msg)) -> do
             say $ "did receiveData command with code: " ++ show code ++ " msg: " ++ BS.unpack msg
-            -- TODO send die to roomProcess
+            send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
-            send processId (SocketMessage msg)
+            send processId (SocketMsg msg)
             roomSocketProcess processId conn
         (WS.DataMessage (WS.Binary msg)) ->
             -- TODO send die to roomProcess

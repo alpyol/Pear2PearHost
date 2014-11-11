@@ -19,7 +19,7 @@ import qualified Data.Map  as M
 import qualified Data.List as L
 
 import RoomActors
-import ActorsMessages (URLAddedMessage(..))
+import ActorsMessages (FromRoomMsg(..))
 
 data SupervisorState = SupervisorState {
     getProcessesByURL :: M.Map BS.ByteString [DP.ProcessId],
@@ -37,12 +37,9 @@ logMessage msg = do
 addIfNoExists :: Eq a => a -> [a] -> [a]
 addIfNoExists newEl arr = maybe (newEl:arr) (\_ -> arr) (L.find (\el -> el == newEl) arr)
 
-putImage :: SupervisorState -> URLAddedMessage -> SupervisorState
-putImage state image =
-        let owner     = getURLOwner image
-            url       = getURL      image
-
-            processesByURL = getProcessesByURL state
+putImage :: SupervisorState -> (DP.ProcessId, BS.ByteString) -> SupervisorState
+putImage state (owner, url) =
+        let processesByURL = getProcessesByURL state
             urlsByProcess  = getURLsByProcess  state
 
             processes = M.findWithDefault [] url   processesByURL
@@ -53,10 +50,28 @@ putImage state image =
         
         in SupervisorState (M.insert url newProcesses processesByURL) (M.insert owner newUrls urlsByProcess)
 
-processAddImage :: SupervisorState -> URLAddedMessage -> Process (Maybe SupervisorState)
-processAddImage state addedImage = do
-    let newState = putImage state addedImage
-    say $ "newState: " ++ show newState
+-- data FromRoomMsg = URLAddedMsg { getURLOwner :: DP.ProcessId, getURL :: BS.ByteString }
+--     | RoomClosedMsg { getURLOwner :: DP.ProcessId }
+--     deriving (Show, Typeable {-!, Binary !-})
+
+removePids :: DP.ProcessId -> [BS.ByteString] -> SupervisorState -> SupervisorState
+removePids _ _ _ = undefined
+
+removeRoom :: SupervisorState -> DP.ProcessId -> SupervisorState
+removeRoom state roomPid =
+    let urlsByProcess    = maybe [] id (M.lookup roomPid (getURLsByProcess state))
+        removedPidsState = removePids roomPid urlsByProcess state
+
+    in SupervisorState (getProcessesByURL removedPidsState) (M.delete roomPid (getURLsByProcess removedPidsState))
+
+processAddImage :: SupervisorState -> FromRoomMsg -> Process (Maybe SupervisorState)
+processAddImage state (URLAddedMsg owner url) = do
+    let newState = putImage state (owner, url)
+    say $ "+ newState: " ++ show newState
+    return $ Just newState
+processAddImage state (RoomClosedMsg closedRoom) = do
+    let newState = removeRoom state closedRoom
+    say $ "- newState: " ++ show newState
     return $ Just newState
 
 supervisorProcess :: SupervisorState -> Process ()

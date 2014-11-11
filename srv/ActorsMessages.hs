@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module ActorsMessages (URLAddedMessage(..)) where
+module ActorsMessages (FromRoomMsg(..)) where
 
 import Control.Distributed.Process as DP
 
@@ -10,5 +10,8 @@ import Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.DeriveTH
 
-data URLAddedMessage = URLAddedMessage { getURLOwner :: DP.ProcessId, getURL :: BS.ByteString } deriving (Show, Typeable {-!, Binary !-})
-$( derive makeBinary ''URLAddedMessage )
+data FromRoomMsg = URLAddedMsg { getURLOwner :: DP.ProcessId, getURL :: BS.ByteString }
+    | RoomClosedMsg { getURLOwner :: DP.ProcessId }
+    deriving (Show, Typeable {-!, Binary !-})
+
+$( derive makeBinary ''FromRoomMsg )
