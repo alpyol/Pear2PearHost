@@ -40,16 +40,16 @@
 var cachedImageBlobsByURL = {};
 var loadingCallbacksByURL = {};
 
-function imageLoader(url, onload, onerror)
+function cachedLoader(loader, key, resultCache, pendingCallbacks, onload, onerror)
 {
-    var imageBlob = cachedImageBlobsByURL[url];
+    var imageBlob = resultCache[key];
 
     if (imageBlob) {
         onload(createImageBlobURL(imageBlob));
         return
     }
 
-    var callbacksAr = loadingCallbacksByURL[url];
+    var callbacksAr = pendingCallbacks[key];
 
     var callbacks = { onload: onload, onerror: onerror };
 
@@ -58,9 +58,45 @@ function imageLoader(url, onload, onerror)
         return
     }
 
-    loadingCallbacksByURL[url] = [callbacks];
+    pendingCallbacks[key] = [callbacks];
 
-    networkImageLoader(url)
+    function onLoadWrapper(result) {
+
+        resultCache[key] = result;
+
+        var callbacksAr = pendingCallbacks[key];
+        pendingCallbacks[key] = null;
+        for (var i=0; i<callbacksAr.length; i++) {
+            if (callbacksAr[i].onload) {
+                callbacksAr[i].onload(result)
+            }
+        }
+    }
+
+    function onErrorWrapper(e) {
+
+        var callbacksAr = pendingCallbacks[key];
+        pendingCallbacks[key] = null;
+        for (var i=0; i<callbacksAr.length; i++) {
+            if (callbacksAr[i].onload) {
+                callbacksAr[i].onerror(e)
+            }
+        }
+    }
+
+    loader(key, onLoadWrapper, onErrorWrapper)
+}
+
+function imageLoader(url, onload, onerror)
+{
+    function onLoadWrapper(imageBlob) {
+
+        var imageURL = createImageBlobURL(imageBlob);
+        onload(imageURL);
+        processOnLoadImage(url);
+    }
+
+    cachedLoader(networkImageLoader, url, cachedImageBlobsByURL, loadingCallbacksByURL, onLoadWrapper, onerror)
 }
 
 function createImageBlobURL(blob)
@@ -71,11 +107,19 @@ function createImageBlobURL(blob)
 }
 
 var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
-var roomSocketQueue = [];
+var sentSrvCachedURLs = [];
 
-function processOnLoadImage(imageBlob, url)
+function processOnLoadImage(url)
 {
-    cachedImageBlobsByURL[url] = imageBlob;
+    function contains(a, obj) {
+        var i = a.length;
+        while (i--) {
+            if (a[i] === obj) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     if (roomSocket == null) {
         roomSocket = new WebSocket("ws://localhost:27001/ws");
@@ -85,11 +129,19 @@ function processOnLoadImage(imageBlob, url)
             var allUrls = Object.keys(cachedImageBlobsByURL);
 
             var roomSocketQueue = allUrls.map(function(url) {
-                return JSON.stringify({type: "imageAdded", url: url});
+                return {type: "imageAdded", url: url};
             });
 
             for (var i=0; i<roomSocketQueue.length; i++) {
-                roomSocket.send(roomSocketQueue[i])
+
+                var data = roomSocketQueue[i];
+
+                if (!contains(sentSrvCachedURLs, data.url)) {
+
+                    roomSocket.send(JSON.stringify(data));
+
+                    sentURLs.push(data.url)
+                }
             }
         };
 
@@ -99,19 +151,24 @@ function processOnLoadImage(imageBlob, url)
 
         roomSocket.onerror = function(error) {
             console.log("room web socket error: " + error);
+            sentSrvCachedURLs = [];
             //TODO try reconnect after delay
         };
 
         roomSocket.onclose = function(event) {
             console.log("connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
+            sentSrvCachedURLs = [];
             //TODO run reconnection after delay
         };
     } else {
 
         if (roomSocket.readyState == WebSocket.OPEN) {
 
-            var imageAdded = JSON.stringify({type: "imageAdded", url: url});
-            roomSocket.send(imageAdded)
+            if (!contains(sentSrvCachedURLs, url)) {
+                var imageAdded = JSON.stringify({type: "imageAdded", url: url});
+                roomSocket.send(imageAdded);
+                sentURLs.push(url)
+            }
         } else if (roomSocket.readyState != WebSocket.CONNECTING) {
 
             console.log("error: roomSocket.readyState: " + roomSocket.readyState)
@@ -119,7 +176,7 @@ function processOnLoadImage(imageBlob, url)
     }
 }
 
-function networkImageLoader(url)
+function networkImageLoader(url, onload, onerror)
 {
     //TODO try load from pear first
 
@@ -158,27 +215,11 @@ function networkImageLoader(url)
         var arrayBufferView = new Uint8Array(this.response);
         var imageBlob = new Blob([arrayBufferView], {type: "image/jpeg"});
 
-        processOnLoadImage(imageBlob, url);
-
-        var imageURL = createImageBlobURL(imageBlob);
-
-        var callbacksAr = loadingCallbacksByURL[url];
-        loadingCallbacksByURL[url] = null;
-        for (var i=0; i<callbacksAr.length; i++) {
-            if (callbacksAr[i].onload) {
-                callbacksAr[i].onload(imageURL)
-            }
-        }
+        onload(imageBlob);
     };
 
     xhr.onerror = function(e) {
-        var callbacksAr = loadingCallbacksByURL[url];
-        loadingCallbacksByURL[url] = null;
-        for (var i=0; i<callbacksAr.length; i++) {
-            if (callbacksAr[i].onload) {
-                callbacksAr[i].onerror(e)
-            }
-        }
+        onerror(e)
     };
 
     //TODO implement progress and other callbacks
