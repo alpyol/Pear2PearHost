@@ -12,7 +12,7 @@ import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 
-import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
+import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 
 import ActorsMessages (FromRoomMsg(..), SocketMsg(..))

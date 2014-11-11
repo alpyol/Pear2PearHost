@@ -7,7 +7,6 @@ import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 
-import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
 import Data.Aeson.Types
 
 import ActorsMessages (SocketMsg(..))
@@ -25,7 +24,7 @@ logMessage msg = do
 processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe ParticipantState)
 processSocketMesssage state (SocketMsg msg) = do
     return Nothing
-processSocketMesssage state (SocketMsg msg) = do
+processSocketMesssage state CloseMsg = do
     die ("Socket closed - close participant" :: String)
     return Nothing
 
