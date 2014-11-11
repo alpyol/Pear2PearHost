@@ -6,6 +6,7 @@ import Control.Concurrent
 import Network.Transport.TCP
 
 import RoomActors (runRoomServer)
+import ParticipantActors (runParticipantServer)
 import RoomsSupervisor (supervisorProcess)
 
 createAndInitActors = do
@@ -15,5 +16,6 @@ createAndInitActors = do
     supervisorProcessID <- forkProcess node $ supervisorProcess
 
     forkIO $ runRoomServer node supervisorProcessID
+    forkIO $ runParticipantServer node supervisorProcessID
 
     return ()

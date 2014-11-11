@@ -10,18 +10,12 @@ import qualified Network.WebSockets as WS
 import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
 
-import Data.Binary
-import Data.Typeable
 import qualified Data.ByteString.Lazy.Char8 as BS
-import Data.DeriveTH
 
 import qualified Data.Aeson as AES ((.:), (.:?), decode, FromJSON(..), Value(..))
 import Data.Aeson.Types
 
-import ActorsMessages (FromRoomMsg(..))
-
-data SocketMsg = SocketMsg BS.ByteString | CloseMsg deriving (Show, Typeable {-!, Binary !-})
-$( derive makeBinary ''SocketMsg )
+import ActorsMessages (FromRoomMsg(..), SocketMsg(..))
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId }
 
@@ -40,7 +34,6 @@ processAddImageCmd json state = do
     let addedImage :: Maybe String = parseMaybe (.: "url") json
     case addedImage of
         (Just addedImage) -> do
-            say $ "TODO process imageAdded object: " ++ addedImage
             self <- getSelfPid
             send (getSupervisor state) (URLAddedMsg self (BS.pack addedImage))
             return Nothing
@@ -87,7 +80,7 @@ roomSocketProcess processId conn = do
     result <- liftIO $ WS.receive conn
     case result of
         (WS.ControlMessage (WS.Close code msg)) -> do
-            say $ "did receiveData command with code: " ++ show code ++ " msg: " ++ BS.unpack msg
+            --say $ "did receiveData command with code: " ++ show code ++ " msg: " ++ BS.unpack msg
             send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
@@ -101,7 +94,7 @@ roomApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
 roomApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
-    liftIO $ Prelude.putStrLn "got new connection"
+    --liftIO $ Prelude.putStrLn "got new connection"
     roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID)
     runProcess node $ roomSocketProcess roomProcessID conn
 

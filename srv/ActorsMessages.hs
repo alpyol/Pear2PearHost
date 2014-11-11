@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-module ActorsMessages (FromRoomMsg(..)) where
+module ActorsMessages (FromRoomMsg(..), SocketMsg(..)) where
 
 import Control.Distributed.Process as DP
 
@@ -15,3 +15,6 @@ data FromRoomMsg = URLAddedMsg { getURLOwner :: DP.ProcessId, getURL :: BS.ByteS
     deriving (Show, Typeable {-!, Binary !-})
 
 $( derive makeBinary ''FromRoomMsg )
+
+data SocketMsg = SocketMsg BS.ByteString | CloseMsg deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''SocketMsg )
