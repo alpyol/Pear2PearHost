@@ -1,5 +1,7 @@
-{-# LANGUAGE TypeFamilies, QuasiQuotes, MultiParamTypeClasses,
-             TemplateHaskell, OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies      #-}
+{-# LANGUAGE QuasiQuotes       #-}
+{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 import Data.IORef (IORef, newIORef, atomicWriteIORef, readIORef)             
 import Yesod
