@@ -2,7 +2,7 @@
  * Created by vladimirgorbenko on 09.11.14.
  */
 
-//TODO !!!! send file chunked - http://www.html5rocks.com/en/tutorials/webrtc/basics/
+//TODO !!!! send file as chunks - http://www.html5rocks.com/en/tutorials/webrtc/basics/
 
 //init custom elements
 (function() {
@@ -77,57 +77,44 @@ function processOnLoadImage(imageBlob, url)
 {
     cachedImageBlobsByURL[url] = imageBlob;
 
-    var imageAdded = {type: "imageAdded", url: url};
-
     if (roomSocket == null) {
-        console.log("try create WebSocket !!!");
         roomSocket = new WebSocket("ws://localhost:27001/ws");
-        console.log("create WebSocket !!!");
-
-        roomSocketQueue.push(imageAdded);
 
         roomSocket.onopen = function() {
 
-            var roomSocketQueueCopy = roomSocketQueue;
-            roomSocketQueue = [];
+            var allUrls = Object.keys(cachedImageBlobsByURL);
 
-            for (var i=0; i<roomSocketQueueCopy.length; i++) {
+            var roomSocketQueue = allUrls.map(function(url) {
+                return JSON.stringify({type: "imageAdded", url: url});
+            });
 
-                //TODO JSON.stringify ???
-                var sendStr = JSON.stringify(roomSocketQueueCopy[i]);
-                roomSocket.send(sendStr)
+            for (var i=0; i<roomSocketQueue.length; i++) {
+                roomSocket.send(roomSocketQueue[i])
             }
         };
 
         roomSocket.onmessage = function(event) {
-
             //TODO process income pears
         };
 
         roomSocket.onerror = function(error) {
-
             console.log("room web socket error: " + error);
             //TODO try reconnect after delay
         };
 
         roomSocket.onclose = function(event) {
-            if (event.wasClean) {
-                alert('Connection closed clean' + ' Code: ' + event.code + ' reason: ' + event.reason);
-            } else {
-                alert('Connection broken' + ' Code: ' + event.code + ' reason: ' + event.reason); // например, "убит" процесс сервера
-            }
+            console.log("connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
+            //TODO run reconnection after delay
         };
     } else {
 
         if (roomSocket.readyState == WebSocket.OPEN) {
 
-            //TODO JSON.stringify ???
+            var imageAdded = JSON.stringify({type: "imageAdded", url: url});
             roomSocket.send(imageAdded)
-        } else if (roomSocket.readyState == WebSocket.CONNECTING) {
+        } else if (roomSocket.readyState != WebSocket.CONNECTING) {
 
-            roomSocketQueue.push(imageAdded)
-        } else {
-            console.log("roomSocket.readyState: " + roomSocket.readyState)
+            console.log("error: roomSocket.readyState: " + roomSocket.readyState)
         }
     }
 }
