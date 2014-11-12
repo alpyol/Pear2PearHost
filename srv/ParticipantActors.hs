@@ -12,6 +12,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 
 import Data.Aeson.Types
 import Data.Text
+import Data.Maybe
 
 import ActorsMessages (SocketMsg(..), FromClientMsg(..), SupervisorToClientMsg(..))
 import ActorsCmn (jsonObjectWithType)
@@ -43,7 +44,7 @@ processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe Partici
 processSocketMesssage state (SocketMsg msg) = do
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
-        (Right ("requestOffer", json)) -> do
+        (Right ("requestOffer", json)) ->
             processOfferCmd json state
         (Right (cmd, json)) -> do
             say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json
@@ -61,7 +62,7 @@ processSupervisorCmds state NoImageError = do
     liftIO $
         let conn = getConnection state
         in do
-            WS.sendTextData conn ("{\"msgType\":\"noRequestedURL\"}" :: Text)
+            WS.sendTextData conn ("{\"msgType\":\"NoRequestedURL\"}" :: Text)
             WS.sendClose conn ("no url" :: Text)
     return Nothing
 
@@ -72,7 +73,7 @@ participantProcess state = do
         match (processSocketMesssage state),
         match (processSupervisorCmds state),
         match logMessage ]
-    participantProcess $ maybe state id newState
+    participantProcess $ fromMaybe state newState
 
 participantSocketProcess :: ProcessId -> WS.Connection -> Process ()
 participantSocketProcess processId conn = do

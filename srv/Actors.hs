@@ -13,7 +13,7 @@ createAndInitActors = do
     Right t <- createTransport "127.0.0.1" "10501" defaultTCPParameters
     node <- newLocalNode t initRemoteTable
 
-    supervisorProcessID <- forkProcess node $ supervisorProcess
+    supervisorProcessID <- forkProcess node supervisorProcess
 
     forkIO $ runRoomServer node supervisorProcessID
     forkIO $ runParticipantServer node supervisorProcessID

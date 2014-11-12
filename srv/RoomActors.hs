@@ -1,6 +1,4 @@
-{-# LANGUAGE TemplateHaskell     #-}
 {-# LANGUAGE OverloadedStrings   #-}
-{-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module RoomActors (runRoomServer) where
@@ -14,6 +12,7 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 import Data.Text
+import Data.Maybe
 
 import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..))
 import ActorsCmn (jsonObjectWithType)
@@ -43,9 +42,9 @@ processAddImageCmd json state = do
             return Nothing
 
 processSocketMesssage :: RoomState -> SocketMsg -> Process (Maybe RoomState)
-processSocketMesssage state (SocketMsg msg) = do
+processSocketMesssage state (SocketMsg msg) =
     case jsonObjectWithType msg of
-        (Right ("imageAdded", json)) -> do
+        (Right ("imageAdded", json)) ->
             processAddImageCmd json state
         (Right (cmd, json)) -> do
             say $ "room got unsupported command: " ++ cmd ++ " json: " ++ show json
@@ -63,8 +62,8 @@ processClientMsgs :: RoomState -> FromClientMsg -> Process (Maybe RoomState)
 processClientMsgs state (RequestOffer client url) = do
 
     liftIO $ let conn = getConnection state
-                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ (BS.unpack url) ++ "\"}"
-        in do
+                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\"}"
+        in
             -- TODO handle exception on send here ???
             WS.sendTextData conn cmd
     return Nothing
@@ -76,7 +75,7 @@ roomProcess state = do
         match (processSocketMesssage state),
         match (processClientMsgs state),
         match logMessage ]
-    roomProcess $ maybe state id newState
+    roomProcess $ fromMaybe state newState
 
 roomSocketProcess :: ProcessId -> WS.Connection -> Process ()
 roomSocketProcess processId conn = do
