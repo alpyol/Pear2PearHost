@@ -13,8 +13,12 @@ import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
+import Text.Read
+import qualified Data.Binary as BN
 
-import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..))
+import Control.Exception
+
+import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..), RoomToClientMsg(..))
 import ActorsCmn (jsonObjectWithType)
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
@@ -30,7 +34,7 @@ logMessage msg = do
 processAddImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
 processAddImageCmd json state = do
 
-    -- {"type":"imageAdded","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
+    -- {"msgType":"ImageAdded","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
     let addedImage :: Maybe String = parseMaybe (.: "url") json
     case addedImage of
         (Just addedImage) -> do
@@ -41,12 +45,32 @@ processAddImageCmd json state = do
             say $ "no image in json: " ++ show json
             return Nothing
 
+processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
+processNoImageCmd json state = do
+
+    -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
+    let clientStr :: Maybe String = parseMaybe (.: "cpid") json
+    case clientStr of
+        (Just clientStr) -> do
+            client <- liftIO $ handle (\(SomeException exc) -> return Nothing) (evaluate $ Just (BN.decode (BS.pack clientStr) :: DP.ProcessId))
+            case client of
+                (Just client) -> do
+                    send client NoImageOnWebError
+                    return Nothing
+                Nothing -> do
+                    say $ "room: invalid client pid in json: " ++ show clientStr
+                    return Nothing
+        Nothing -> do
+            say $ "room: no client pid in json: " ++ show json
+            return Nothing
+
 processSocketMesssage :: RoomState -> SocketMsg -> Process (Maybe RoomState)
 processSocketMesssage state (SocketMsg msg) =
     case jsonObjectWithType msg of
-        (Right ("imageAdded", json)) ->
-            processAddImageCmd json state
+        (Right ("ImageAdded"    , json)) -> processAddImageCmd json state
+        (Right ("NoRequestedURL", json)) -> processNoImageCmd  json state
         (Right (cmd, json)) -> do
+            -- TODO process command: NoRequestedURL json: fromList [("cpid",String "pid://127.0.0.1:10501:0:17"),("msgType",String "NoRequestedURL")]
             say $ "room got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing
         Left description -> do
@@ -62,7 +86,7 @@ processClientMsgs :: RoomState -> FromClientMsg -> Process (Maybe RoomState)
 processClientMsgs state (RequestOffer client url) = do
 
     liftIO $ let conn = getConnection state
-                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\"}"
+                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\",\"cpid\":\"" ++ show client ++ "\"}"
         in
             -- TODO handle exception on send here ???
             WS.sendTextData conn cmd

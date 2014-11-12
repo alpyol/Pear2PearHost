@@ -29,7 +29,7 @@ logMessage msg = do
 
 processOfferCmd :: Object -> ParticipantState -> Process (Maybe ParticipantState)
 processOfferCmd json state = do
-    -- {"type":"requestOffer","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
+    -- {"type":"RequestOffer","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
     let orlOpt :: Maybe String = parseMaybe (.: "url") json
     case orlOpt of
         (Just url) -> do
@@ -44,7 +44,7 @@ processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe Partici
 processSocketMesssage state (SocketMsg msg) = do
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
-        (Right ("requestOffer", json)) ->
+        (Right ("RequestOffer", json)) ->
             processOfferCmd json state
         (Right (cmd, json)) -> do
             say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json

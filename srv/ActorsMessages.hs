@@ -5,7 +5,8 @@ module ActorsMessages (
     FromRoomMsg(..),
     SocketMsg(..),
     FromClientMsg(..),
-    SupervisorToClientMsg(..)
+    SupervisorToClientMsg(..),
+    RoomToClientMsg(..)
     ) where
 
 import Control.Distributed.Process as DP
@@ -26,6 +27,10 @@ $( derive makeBinary ''FromClientMsg )
 data SupervisorToClientMsg = NoImageError
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SupervisorToClientMsg )
+
+data RoomToClientMsg = NoImageOnWebError
+    deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''RoomToClientMsg )
 
 data SocketMsg = SocketMsg BS.ByteString | CloseMsg deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SocketMsg )

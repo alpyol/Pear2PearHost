@@ -106,105 +106,6 @@ function createImageBlobURL(blob)
     return result
 }
 
-var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
-var sentSrvCachedURLs = [];
-
-function processOnLoadImages(urls)
-{
-    function contains(a, obj) {
-        var i = a.length;
-        while (i--) {
-            if (a[i] === obj) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    if (roomSocket == null) {
-        roomSocket = new WebSocket("ws://localhost:27001/ws");
-
-        roomSocket.onopen = function() {
-
-            var urlsToSendAll = Object.keys(cachedImageBlobsByURL);
-
-            var urlsToSend = [];
-
-            for (var i=0; i<urlsToSendAll.length; i++) {
-
-                var url = urlsToSendAll[i];
-                if (!contains(sentSrvCachedURLs, url)) {
-                    urlsToSend.push(url);
-                }
-            }
-
-            for (var i=0; i<urlsToSend.length; i++) {
-
-                var url = urlsToSend[i];
-                var obj = {msgType: "imageAdded", url: url};
-                roomSocket.send(JSON.stringify(obj));
-            }
-
-            sentSrvCachedURLs = urlsToSend;
-        };
-
-        roomSocket.onmessage = function(event) {
-
-            var incomingMessage = JSON.parse(event.data);
-            if (incomingMessage.msgType == 'RequestOffer') {
-
-                console.log("got offer request: " + event.data);
-                //var allURLs = Object.keys(cachedImageBlobsByURL);
-
-                //if (contains(allURLs, incomingMessage.url)) {
-
-
-                //} else {
-
-
-                //}
-            }
-        };
-
-        function reconnectSocket() {
-
-            roomSocket = null;
-            sentSrvCachedURLs = [];
-            function func() {
-                processOnLoadImages([])
-            }
-            setTimeout(func, 3*1000);
-        }
-
-        roomSocket.onerror = function(error) {
-            console.log("room web socket error: " + error);
-            reconnectSocket()
-        };
-
-        roomSocket.onclose = function(event) {
-            console.log("connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
-            reconnectSocket()
-        };
-    } else {
-
-        if (roomSocket.readyState == WebSocket.OPEN) {
-
-            for (var i=0; i<urls.length; i++) {
-
-                var url = urls[i];
-                if (!contains(sentSrvCachedURLs, url)) {
-                    var obj = {msgType: "imageAdded", url: url};
-                    roomSocket.send(JSON.stringify(obj));
-                    sentSrvCachedURLs.push(url)
-                }
-            }
-        } else if (roomSocket.readyState != WebSocket.CONNECTING) {
-
-            console.log("error: roomSocket.readyState: " + roomSocket.readyState)
-        }
-    }
-}
-
 function networkImageLoader(url, onload, onerror)
 {
     //TODO try load from pear first
@@ -259,13 +160,118 @@ function networkImageLoader(url, onload, onerror)
     xhr.send();
 }
 
+var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
+var sentSrvCachedURLs = [];
+
+function processOnLoadImages(urls)
+{
+    function contains(a, obj) {
+        var i = a.length;
+        while (i--) {
+            if (a[i] === obj) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (roomSocket == null) {
+        roomSocket = new WebSocket("ws://localhost:27001/ws");
+
+        roomSocket.onopen = function() {
+
+            var urlsToSendAll = Object.keys(cachedImageBlobsByURL);
+
+            var urlsToSend = [];
+
+            for (var i=0; i<urlsToSendAll.length; i++) {
+
+                var url = urlsToSendAll[i];
+                if (!contains(sentSrvCachedURLs, url)) {
+                    urlsToSend.push(url);
+                }
+            }
+
+            for (var i=0; i<urlsToSend.length; i++) {
+
+                var url = urlsToSend[i];
+                var obj = {msgType: "ImageAdded", url: url};
+                roomSocket.send(JSON.stringify(obj));
+            }
+
+            sentSrvCachedURLs = urlsToSend;
+        };
+
+        roomSocket.onmessage = function(event) {
+
+            processServerSocketMessage(roomSocket, event.data);
+        };
+
+        function reconnectSocket() {
+
+            roomSocket = null;
+            sentSrvCachedURLs = [];
+            function func() {
+                processOnLoadImages([])
+            }
+            setTimeout(func, 3*1000);
+        }
+
+        roomSocket.onerror = function(error) {
+            console.log("room web socket error: " + error);
+            reconnectSocket()
+        };
+
+        roomSocket.onclose = function(event) {
+            console.log("connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
+            reconnectSocket()
+        };
+    } else {
+
+        if (roomSocket.readyState == WebSocket.OPEN) {
+
+            for (var i=0; i<urls.length; i++) {
+
+                var url = urls[i];
+                if (!contains(sentSrvCachedURLs, url)) {
+                    var obj = {msgType: "ImageAdded", url: url};
+                    roomSocket.send(JSON.stringify(obj));
+                    sentSrvCachedURLs.push(url)
+                }
+            }
+        } else if (roomSocket.readyState != WebSocket.CONNECTING) {
+
+            console.log("error: roomSocket.readyState: " + roomSocket.readyState)
+        }
+    }
+}
+
+function processServerSocketMessage(socket, msg)
+{
+    var incomingMessage = JSON.parse(event.data);
+    if (incomingMessage.msgType == 'RequestOffer') {
+
+        console.log("got offer request: " + event.data);
+        //var allURLs = Object.keys(cachedImageBlobsByURL);
+
+        //if (contains(allURLs, incomingMessage.url)) {
+
+
+        //} else
+        {
+            var obj = {msgType: "NoRequestedURL", cpid: incomingMessage.cpid};
+            roomSocket.send(JSON.stringify(obj));
+        }
+    }
+}
+
 function fromPearLoader(url, onload, onerror)
 {
     var roomSocket = new WebSocket("ws://localhost:27002/ws");
 
     roomSocket.onopen = function() {
 
-        var cmd = {msgType: "requestOffer", url: url};
+        var cmd = {msgType: "RequestOffer", url: url};
         roomSocket.send(JSON.stringify(cmd));
         console.log("cmd sent: " + JSON.stringify(cmd));
     };
