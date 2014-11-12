@@ -154,6 +154,7 @@ function processOnLoadImages(urls)
 
         function reconnectSocket() {
 
+            roomSocket = null;
             sentSrvCachedURLs = [];
             function func() {
                 processOnLoadImages([])
