@@ -78,7 +78,7 @@ function cachedLoader(loader, key, resultCache, pendingCallbacks, onload, onerro
         var callbacksAr = pendingCallbacks[key];
         pendingCallbacks[key] = null;
         for (var i=0; i<callbacksAr.length; i++) {
-            if (callbacksAr[i].onload) {
+            if (callbacksAr[i].onerror) {
                 callbacksAr[i].onerror(e)
             }
         }
@@ -93,7 +93,7 @@ function imageLoader(url, onload, onerror)
 
         var imageURL = createImageBlobURL(imageBlob);
         onload(imageURL);
-        processOnLoadImage(url);
+        processOnLoadImages([url]);
     }
 
     cachedLoader(networkImageLoader, url, cachedImageBlobsByURL, loadingCallbacksByURL, onLoadWrapper, onerror)
@@ -109,7 +109,7 @@ function createImageBlobURL(blob)
 var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
 var sentSrvCachedURLs = [];
 
-function processOnLoadImage(url)
+function processOnLoadImages(urls)
 {
     function contains(a, obj) {
         var i = a.length;
@@ -126,48 +126,62 @@ function processOnLoadImage(url)
 
         roomSocket.onopen = function() {
 
-            var allUrls = Object.keys(cachedImageBlobsByURL);
+            var urlsToSendAll = Object.keys(cachedImageBlobsByURL);
 
-            var roomSocketQueue = allUrls.map(function(url) {
-                return {type: "imageAdded", url: url};
-            });
+            var urlsToSend = [];
 
-            for (var i=0; i<roomSocketQueue.length; i++) {
+            for (var i=0; i<urlsToSendAll.length; i++) {
 
-                var data = roomSocketQueue[i];
-
-                if (!contains(sentSrvCachedURLs, data.url)) {
-
-                    roomSocket.send(JSON.stringify(data));
-
-                    sentURLs.push(data.url)
+                var url = urlsToSendAll[i];
+                if (!contains(sentSrvCachedURLs, url)) {
+                    urlsToSend.push(url);
                 }
             }
+
+            for (var i=0; i<urlsToSend.length; i++) {
+
+                var url = urlsToSend[i];
+                var obj = {type: "imageAdded", url: url};
+                roomSocket.send(JSON.stringify(obj));
+            }
+
+            sentSrvCachedURLs = urlsToSend;
         };
 
         roomSocket.onmessage = function(event) {
             //TODO process income pears
         };
 
+        function reconnectSocket() {
+
+            sentSrvCachedURLs = [];
+            function func() {
+                processOnLoadImages([])
+            }
+            setTimeout(func, 3*1000);
+        }
+
         roomSocket.onerror = function(error) {
             console.log("room web socket error: " + error);
-            sentSrvCachedURLs = [];
-            //TODO try reconnect after delay
+            reconnectSocket()
         };
 
         roomSocket.onclose = function(event) {
             console.log("connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
-            sentSrvCachedURLs = [];
-            //TODO run reconnection after delay
+            reconnectSocket()
         };
     } else {
 
         if (roomSocket.readyState == WebSocket.OPEN) {
 
-            if (!contains(sentSrvCachedURLs, url)) {
-                var imageAdded = JSON.stringify({type: "imageAdded", url: url});
-                roomSocket.send(imageAdded);
-                sentURLs.push(url)
+            for (var i=0; i<urls.length; i++) {
+
+                var url = urls[i];
+                if (!contains(sentSrvCachedURLs, url)) {
+                    var obj = {type: "imageAdded", url: url};
+                    roomSocket.send(JSON.stringify(obj));
+                    sentSrvCachedURLs.push(url)
+                }
             }
         } else if (roomSocket.readyState != WebSocket.CONNECTING) {
 
@@ -210,7 +224,7 @@ function networkImageLoader(url, onload, onerror)
     // Ask for the result as an ArrayBuffer.
     xhr.responseType = "arraybuffer";
 
-    xhr.onload = function( e ) {
+    xhr.onload = function(e) {
         // Obtain a blob: URL for the image data.
         var arrayBufferView = new Uint8Array(this.response);
         var imageBlob = new Blob([arrayBufferView], {type: "image/jpeg"});
@@ -228,4 +242,9 @@ function networkImageLoader(url, onload, onerror)
     };
 
     xhr.send();
+}
+
+function fromPearLoader(url, onload, onerror)
+{
+
 }
