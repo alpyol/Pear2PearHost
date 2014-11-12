@@ -11,11 +11,11 @@ import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
-
 import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 
 import ActorsMessages (FromRoomMsg(..), SocketMsg(..))
+import ActorsCmn (jsonObjectWithType)
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId }
 
@@ -40,17 +40,6 @@ processAddImageCmd json state = do
         Nothing -> do
             say $ "no image in json: " ++ show json
             return Nothing
-
-jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
-jsonObjectWithType jsonStr = 
-    case AES.decode jsonStr :: Maybe Value of
-        (Just (Object json)) -> do
-            let cmdType :: Maybe String = parseMaybe (.: "type") json
-            case cmdType of
-                (Just someCmd) -> Right (someCmd, json)
-                Nothing -> Left $ "no command in json: " ++ show json
-        (Just jsonVal) -> Left $ "got unsupported json object: " ++ show jsonVal
-        Nothing -> Left $ "can not parse json object: " ++ show (BS.unpack jsonStr)
 
 processSocketMesssage :: RoomState -> SocketMsg -> Process (Maybe RoomState)
 processSocketMesssage state (SocketMsg msg) = do

@@ -5,12 +5,13 @@ import Control.Distributed.Process as DP
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Map  as M
 import qualified Data.List as L
+import Data.Maybe
 
-import ActorsMessages (FromRoomMsg(..))
+import ActorsMessages (FromRoomMsg(..), FromClientMsg(..), SupervisorToClientMsg(..))
 
 data SupervisorState = SupervisorState {
-    getProcessesByURL :: M.Map BS.ByteString [DP.ProcessId],
-    getURLsByProcess  :: M.Map DP.ProcessId  [BS.ByteString] -- Ordered
+    getRoomsByURL :: M.Map BS.ByteString [DP.ProcessId],
+    getURLsByRoom :: M.Map DP.ProcessId  [BS.ByteString]
     } deriving (Show)
 
 initialSupervisorState :: SupervisorState
@@ -26,16 +27,29 @@ addIfNoExists newEl arr = maybe (newEl:arr) (\_ -> arr) (L.find (\el -> el == ne
 
 putImage :: SupervisorState -> (DP.ProcessId, BS.ByteString) -> SupervisorState
 putImage state (owner, url) =
-        let processesByURL = getProcessesByURL state
-            urlsByProcess  = getURLsByProcess  state
+    let roomsByURL  = getRoomsByURL state
+        urlsByRooms = getURLsByRoom state
 
-            processes = M.findWithDefault [] url   processesByURL
-            urls      = M.findWithDefault [] owner urlsByProcess
+        processes = M.findWithDefault [] url   roomsByURL
+        urls      = M.findWithDefault [] owner urlsByRooms
 
-            newProcesses = addIfNoExists owner processes
-            newUrls      = addIfNoExists url   urls
-        
-        in SupervisorState (M.insert url newProcesses processesByURL) (M.insert owner newUrls urlsByProcess)
+        newProcesses = addIfNoExists owner processes
+        newUrls      = addIfNoExists url   urls
+    
+    in SupervisorState (M.insert url newProcesses roomsByURL) (M.insert owner newUrls urlsByRooms)
+
+getPidForURL :: SupervisorState -> BS.ByteString -> Maybe (DP.ProcessId, SupervisorState)
+getPidForURL state url =
+    let roomsByURL  = getRoomsByURL state
+        urlsByRooms = getURLsByRoom state
+
+        rooms = M.findWithDefault [] url roomsByURL
+        room   = listToMaybe rooms
+
+        (first:leftRooms) = rooms
+        newRoomsByURL = M.insert url (leftRooms ++ [first]) roomsByURL
+
+    in maybe Nothing (\pid -> Just (pid, SupervisorState newRoomsByURL urlsByRooms)) room
 
 removePids :: DP.ProcessId -> [BS.ByteString] -> M.Map BS.ByteString [DP.ProcessId] -> M.Map BS.ByteString [DP.ProcessId]
 removePids _ [] state = state
@@ -45,10 +59,10 @@ removePids pid (x:xs) state =
 
 removeRoom :: SupervisorState -> DP.ProcessId -> SupervisorState
 removeRoom state roomPid =
-    let urlsToRemovePids = maybe [] id (M.lookup roomPid (getURLsByProcess state))
-        pidsByURL        = removePids roomPid urlsToRemovePids (getProcessesByURL state)
+    let urlsToRemovePids = maybe [] id (M.lookup roomPid (getURLsByRoom state))
+        pidsByURL        = removePids roomPid urlsToRemovePids (getRoomsByURL state)
 
-    in SupervisorState pidsByURL (M.delete roomPid (getURLsByProcess state))
+    in SupervisorState pidsByURL (M.delete roomPid (getURLsByRoom state))
 
 processAddImage :: SupervisorState -> FromRoomMsg -> Process (Maybe SupervisorState)
 processAddImage state (URLAddedMsg owner url) = do
@@ -60,9 +74,22 @@ processAddImage state (RoomClosedMsg closedRoom) = do
     say $ "- newState: " ++ show newState
     return $ Just newState
 
+-- data FromClientMsg = RequestOffer DP.ProcessId BS.ByteString
+processClientMsgs :: SupervisorState -> FromClientMsg -> Process (Maybe SupervisorState)
+processClientMsgs state (RequestOffer client url) = do
+    -- getPidForURL :: SupervisorState -> BS.ByteString -> Maybe (DP.ProcessId, SupervisorState)
+    case getPidForURL state url of
+        (Just (room, newState)) -> do
+            -- TODO send offer request to the room
+            say $ "TODO process"
+            return $ Just newState
+        Nothing -> do
+            send client NoImageError
+            return Nothing
+
 supervisorProcess' :: SupervisorState -> Process ()
 supervisorProcess' state = do
-    newState <- receiveWait [match (processAddImage state), match logMessage]
+    newState <- receiveWait [match (processAddImage state), match (processClientMsgs state), match logMessage]
     supervisorProcess' $ maybe state id newState
 
 supervisorProcess :: Process ()

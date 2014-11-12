@@ -1,3 +1,6 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings   #-}
+
 module ParticipantActors (runParticipantServer) where
 
 import qualified Network.WebSockets as WS
@@ -8,12 +11,14 @@ import Control.Distributed.Process.Node
 import qualified Data.ByteString.Lazy.Char8 as BS
 
 import Data.Aeson.Types
+import Data.Text
 
-import ActorsMessages (SocketMsg(..))
+import ActorsMessages (SocketMsg(..), FromClientMsg(..), SupervisorToClientMsg(..))
+import ActorsCmn (jsonObjectWithType)
 
-data ParticipantState = ParticipantState { getSupervisor :: DP.ProcessId }
+data ParticipantState = ParticipantState { getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
 
-initialParticipantState :: DP.ProcessId -> ParticipantState
+initialParticipantState :: DP.ProcessId -> WS.Connection -> ParticipantState
 initialParticipantState = ParticipantState
 
 logMessage :: BS.ByteString -> Process (Maybe ParticipantState)
@@ -21,17 +26,49 @@ logMessage msg = do
     say $ "got unhandled string: " ++ BS.unpack msg ++ "\r\n"
     return Nothing
 
+processOfferCmd :: Object -> ParticipantState -> Process (Maybe ParticipantState)
+processOfferCmd json state = do
+    -- {"type":"requestOffer","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
+    let orlOpt :: Maybe String = parseMaybe (.: "url") json
+    case orlOpt of
+        (Just url) -> do
+            self <- getSelfPid
+            send (getSupervisor state) (RequestOffer self (BS.pack url))
+            return Nothing
+        Nothing -> do
+            say $ "client: no image url in json: " ++ show json
+            return Nothing
+
 processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe ParticipantState)
 processSocketMesssage state (SocketMsg msg) = do
+    -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
+    case jsonObjectWithType msg of
+        (Right ("requestOffer", json)) -> do
+            processOfferCmd json state
+        (Right (cmd, json)) -> do
+            say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json
+            return Nothing
+        Left description -> do
+            say description
+            return Nothing
     return Nothing
 processSocketMesssage state CloseMsg = do
     die ("Socket closed - close participant" :: String)
     return Nothing
 
+processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
+processSupervisorCmds state NoImageError = do
+    liftIO $
+        let conn = getConnection state
+        in do
+            WS.sendTextData conn ("{\"msgType\":\"noRequestedURL\"}" :: Text)
+            WS.sendClose conn ("no url" :: Text)
+    return Nothing
+
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do
     -- Test our matches in order against each message in the queue
-    newState <- receiveWait [match (processSocketMesssage state), match logMessage]
+    newState <- receiveWait [match (processSocketMesssage state), match (processSupervisorCmds state), match logMessage]
     participantProcess $ maybe state id newState
 
 participantSocketProcess :: ProcessId -> WS.Connection -> Process ()
@@ -53,8 +90,8 @@ participantApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> I
 participantApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
-    --liftIO $ Prelude.putStrLn "got new connection"
-    participantProcessID <- forkProcess node (participantProcess $ initialParticipantState supervisorProcessID)
+    liftIO $ Prelude.putStrLn "got new client connection"
+    participantProcessID <- forkProcess node (participantProcess $ initialParticipantState supervisorProcessID conn)
     runProcess node $ participantSocketProcess participantProcessID conn
 
     return ()

@@ -1,7 +1,7 @@
 var sendChannel, receiveChannel;
 
 var startButton = document.getElementById("startButton");
-var sendButton = document.getElementById("sendButton");
+var sendButton  = document.getElementById("sendButton");
 var closeButton = document.getElementById("closeButton");
 startButton.disabled = false;
 sendButton.disabled  = true;
