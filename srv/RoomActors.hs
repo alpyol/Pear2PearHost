@@ -13,9 +13,10 @@ import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
-import Text.Read
+import Data.Binary.Get
 import qualified Data.Binary as BN
 
+import Text.Read
 import Control.Exception
 
 import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..), RoomToClientMsg(..))
@@ -51,15 +52,18 @@ processNoImageCmd json state = do
     -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
     let clientStr :: Maybe String = parseMaybe (.: "cpid") json
     case clientStr of
-        (Just clientStr) -> do
-            client <- liftIO $ handle (\(SomeException exc) -> return Nothing) (evaluate $ Just (BN.decode (BS.pack clientStr) :: DP.ProcessId))
-            case client of
-                (Just client) -> do
+        (Just clientStr) ->
+            case res of
+                (Right (_, _, client)) -> do
+                    say $ "room: send to client NoImageOnWebError: " ++ show client
                     send client NoImageOnWebError
                     return Nothing
-                Nothing -> do
+                (Left _) -> do
                     say $ "room: invalid client pid in json: " ++ show clientStr
                     return Nothing
+
+                where res = (BN.decodeOrFail (BS.pack clientStr)) 
+
         Nothing -> do
             say $ "room: no client pid in json: " ++ show json
             return Nothing
@@ -110,6 +114,7 @@ roomSocketProcess processId conn = do
             send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
+            say $ "room: did receiveData msg: " ++ BS.unpack msg
             send processId (SocketMsg msg)
             roomSocketProcess processId conn
         (WS.DataMessage (WS.Binary msg)) ->
@@ -120,7 +125,7 @@ roomApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
 roomApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
-    --liftIO $ Prelude.putStrLn "got new connection"
+    liftIO $ Prelude.putStrLn "room: got new connection"
     roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID conn)
     runProcess node $ roomSocketProcess roomProcessID conn
 
