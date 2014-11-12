@@ -149,7 +149,21 @@ function processOnLoadImages(urls)
         };
 
         roomSocket.onmessage = function(event) {
-            //TODO process income pears
+
+            var incomingMessage = JSON.parse(event.data);
+            if (incomingMessage.msgType == 'RequestOffer') {
+
+                console.log("got offer request: " + event.data);
+                //var allURLs = Object.keys(cachedImageBlobsByURL);
+
+                //if (contains(allURLs, incomingMessage.url)) {
+
+
+                //} else {
+
+
+                //}
+            }
         };
 
         function reconnectSocket() {
@@ -259,19 +273,19 @@ function fromPearLoader(url, onload, onerror)
     roomSocket.onmessage = function(event) {
 
         var incomingMessage = JSON.parse(event.data);
-
-        if (incomingMessage.msgType == 'noRequestedURL') {
-
+        if (incomingMessage.msgType == 'NoRequestedURL') {
             onerror('no image for url: ' + url)
         }
     };
 
     roomSocket.onerror = function(error) {
         console.log("client web socket error: " + error);
+        roomSocket = null;
     };
 
     roomSocket.onclose = function(event) {
         console.log("client connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
+        roomSocket = null;
     };
 }
 

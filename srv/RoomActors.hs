@@ -13,14 +13,15 @@ import Control.Distributed.Process.Node
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
+import Data.Text
 
-import ActorsMessages (FromRoomMsg(..), SocketMsg(..))
+import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..))
 import ActorsCmn (jsonObjectWithType)
 
-data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId }
+data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
 
-initialRoomState :: DP.ProcessId -> RoomState 
-initialRoomState supervisor = RoomState [] supervisor
+initialRoomState :: DP.ProcessId -> WS.Connection -> RoomState 
+initialRoomState = RoomState []
 
 logMessage :: BS.ByteString -> Process (Maybe RoomState)
 logMessage msg = do
@@ -58,10 +59,23 @@ processSocketMesssage state CloseMsg = do
     die ("Socket closed - close room" :: String)
     return Nothing
 
+processClientMsgs :: RoomState -> FromClientMsg -> Process (Maybe RoomState)
+processClientMsgs state (RequestOffer client url) = do
+
+    liftIO $ let conn = getConnection state
+                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ (BS.unpack url) ++ "\"}"
+        in do
+            -- TODO handle exception on send here ???
+            WS.sendTextData conn cmd
+    return Nothing
+
 roomProcess :: RoomState -> Process ()
 roomProcess state = do
     -- Test our matches in order against each message in the queue
-    newState <- receiveWait [match (processSocketMesssage state), match logMessage]
+    newState <- receiveWait [
+        match (processSocketMesssage state),
+        match (processClientMsgs state),
+        match logMessage ]
     roomProcess $ maybe state id newState
 
 roomSocketProcess :: ProcessId -> WS.Connection -> Process ()
@@ -84,7 +98,7 @@ roomApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
     --liftIO $ Prelude.putStrLn "got new connection"
-    roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID)
+    roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID conn)
     runProcess node $ roomSocketProcess roomProcessID conn
 
     return ()

@@ -74,14 +74,11 @@ processAddImage state (RoomClosedMsg closedRoom) = do
     say $ "- newState: " ++ show newState
     return $ Just newState
 
--- data FromClientMsg = RequestOffer DP.ProcessId BS.ByteString
 processClientMsgs :: SupervisorState -> FromClientMsg -> Process (Maybe SupervisorState)
-processClientMsgs state (RequestOffer client url) = do
-    -- getPidForURL :: SupervisorState -> BS.ByteString -> Maybe (DP.ProcessId, SupervisorState)
+processClientMsgs state offer@(RequestOffer client url) = do
     case getPidForURL state url of
         (Just (room, newState)) -> do
-            -- TODO send offer request to the room
-            say $ "TODO process"
+            send room offer
             return $ Just newState
         Nothing -> do
             send client NoImageError

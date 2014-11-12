@@ -2,9 +2,9 @@
  * Created by vladimirgorbenko on 12.11.14.
  */
 
-//var url = "https://pp.vk.me/c624225/v624225301/731f/nSoKQRKd17c.jpg";
+var url = "https://pp.vk.me/c624225/v624225301/731f/nSoKQRKd17c.jpg";
 
-var url = "https://no_data_url.jpg";
+//var url = "https://no_data_url.jpg";
 
 function onLoadImg(blob)
 {

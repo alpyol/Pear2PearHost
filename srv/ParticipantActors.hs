@@ -68,7 +68,10 @@ processSupervisorCmds state NoImageError = do
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do
     -- Test our matches in order against each message in the queue
-    newState <- receiveWait [match (processSocketMesssage state), match (processSupervisorCmds state), match logMessage]
+    newState <- receiveWait [
+        match (processSocketMesssage state),
+        match (processSupervisorCmds state),
+        match logMessage ]
     participantProcess $ maybe state id newState
 
 participantSocketProcess :: ProcessId -> WS.Connection -> Process ()
