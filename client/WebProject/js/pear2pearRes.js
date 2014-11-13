@@ -266,9 +266,9 @@ function processServerSocketMessage(socket, msg)
                 function gotLocalCandidate(event) {
                     console.log('local ice callback');
                     if (event.candidate) {
-                        console.log('Local ICE candidate: \n' + event.candidate.candidate);
+                        //console.log('Local ICE candidate: \n' + event.candidate.candidate);
                         var obj = {msgType: "SendIceCandidate", candidate: JSON.stringify(event.candidate), cpid: incomingMessage.cpid};
-                        roomSocket.send(JSON.stringify(obj));
+                        socket.send(JSON.stringify(obj));
                     }
                 }
 
@@ -287,9 +287,9 @@ function processServerSocketMessage(socket, msg)
 
                 function gotLocalDescription(desc) {
                     localPeerConnection.setLocalDescription(desc);
-                    console.log('Offer from localPeerConnection \n' + desc.sdp);
+                    //console.log('Offer from localPeerConnection \n' + desc.sdp);
                     var obj = {msgType: "SendOffer", offer: JSON.stringify(desc), cpid: incomingMessage.cpid};
-                    roomSocket.send(JSON.stringify(obj));
+                    socket.send(JSON.stringify(obj));
                 }
 
                 localPeerConnection.createOffer(gotLocalDescription);
@@ -298,55 +298,93 @@ function processServerSocketMessage(socket, msg)
             }
         } else {
             var obj = {msgType: "NoRequestedURL", cpid: incomingMessage.cpid};
-            roomSocket.send(JSON.stringify(obj));
+            socket.send(JSON.stringify(obj));
         }
     }
 }
 
 function fromPearLoader(url, onload, onerror)
 {
-    var roomSocket = new WebSocket("ws://localhost:27002/ws");
+    var clientSocket = new WebSocket("ws://localhost:27002/ws");
 
-    roomSocket.onopen = function() {
+    var remotePeerConnection = null;
+
+    clientSocket.onopen = function() {
 
         var cmd = {msgType: "RequestOffer", url: url};
-        roomSocket.send(JSON.stringify(cmd));
+        clientSocket.send(JSON.stringify(cmd));
         console.log("cmd sent: " + JSON.stringify(cmd));
     };
 
-    roomSocket.onmessage = function(event) {
+    clientSocket.onmessage = function(event) {
 
+        function lazyRemotePeerConnection() {
+
+            if (remotePeerConnection != null) {
+                return remotePeerConnection;
+            }
+
+            remotePeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
+            console.log('Created remote peer connection object remotePeerConnection');
+
+            function gotReceiveChannel(event) {
+            }
+
+            function gotRemoteIceCandidate(event) {
+            }
+
+            remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
+            remotePeerConnection.ondatachannel  = gotReceiveChannel;
+
+            return remotePeerConnection
+        }
+
+        console.log("msg: " + event.data);
         var incomingMessage = JSON.parse(event.data);
         if (incomingMessage.msgType == 'NoRequestedURL') {
             onerror('no image for url: ' + url)
+        } else if (incomingMessage.msgType == 'Error') {
+            onerror('no image for url: ' + incomingMessage.msg)
+        } else if (incomingMessage.msgType == 'Offer') {
+
+            var pear = lazyRemotePeerConnection();
+
+            function gotRemoteDescription(desc) {
+
+                if (remotePeerConnection) {
+                    remotePeerConnection.setLocalDescription(desc);
+                    console.log('!!!!! Answer from remotePeerConnection \n' + desc.sdp);
+                }
+            }
+
+            var desc = new RTCSessionDescription(JSON.parse(incomingMessage.offer));
+
+            pear.setRemoteDescription(desc);
+            pear.createAnswer(gotRemoteDescription);
+        } else if (incomingMessage.msgType == 'Candidate') {
+
+            var pear = lazyRemotePeerConnection();
+
+            var candidate = new RTCIceCandidate(JSON.parse(incomingMessage.candidate));
+
+            pear.addIceCandidate(candidate);
         }
     };
 
-    roomSocket.onerror = function(error) {
+    clientSocket.onerror = function(error) {
         console.log("client web socket error: " + error);
-        roomSocket = null;
+        remotePeerConnection = null;
+        clientSocket = null;
     };
 
-    roomSocket.onclose = function(event) {
+    clientSocket.onclose = function(event) {
         console.log("client connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
-        roomSocket = null;
+        remotePeerConnection = null;
+        clientSocket = null;
     };
 }
 
 //var sendChannel, receiveChannel;
-//
-//function createConnection() {
-//
-//    window.remotePeerConnection = new webkitRTCPeerConnection(servers,
-//        {optional: [{RtpDataChannels: true}]});
-//    trace('Created remote peer connection object remotePeerConnection');
-//
-//    remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
-//    remotePeerConnection.ondatachannel  = gotReceiveChannel;
-//
-//    startButton.disabled = true;
-//    closeButton.disabled = false;
-//}
 //
 //function sendData() {
 //    var data = document.getElementById("dataChannelSend").value;
@@ -372,28 +410,6 @@ function fromPearLoader(url, onload, onerror)
 //    dataChannelReceive.value = "";
 //    dataChannelSend.disabled = true;
 //    dataChannelSend.placeholder = "Press Start, enter some text, then press Send.";
-//}
-//
-//function gotRemoteDescription(desc) {
-//    remotePeerConnection.setLocalDescription(desc);
-//    trace('Answer from remotePeerConnection \n' + desc.sdp);
-//    localPeerConnection.setRemoteDescription(desc);
-//}
-//
-//function gotRemoteIceCandidate(event) {
-//    trace('remote ice callback');
-//    if (event.candidate) {
-//        localPeerConnection.addIceCandidate(event.candidate);
-//        trace('Remote ICE candidate: \n ' + event.candidate.candidate);
-//    }
-//}
-//
-//function gotReceiveChannel(event) {
-//    trace('Receive Channel Callback');
-//    receiveChannel = event.channel;
-//    receiveChannel.onmessage = handleMessage;
-//    receiveChannel.onopen  = handleReceiveChannelStateChange;
-//    receiveChannel.onclose = handleReceiveChannelStateChange;
 //}
 //
 //function handleMessage(event) {

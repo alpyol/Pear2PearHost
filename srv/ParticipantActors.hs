@@ -9,6 +9,7 @@ import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.Aeson as AES (encode)
 
 import Data.Aeson.Types
 import Data.Text
@@ -21,6 +22,8 @@ import ActorsMessages (
     RoomToClientMsg(..),
     ClientToSupervisorMsg(..),
     ClientToRoomMsg(..))
+
+import WebMessagesData
 
 import ActorsCmn (jsonObjectWithType)
 
@@ -79,8 +82,8 @@ sendToWebNoURL conn = do
 
 sendInvalidParticipantState :: WS.Connection -> Text -> IO ()
 sendInvalidParticipantState conn text = do
-    WS.sendTextData conn ("{\"msgType\":\"Error\"}" :: Text)
-    WS.sendClose conn ("no url" :: Text)
+    WS.sendTextData conn $ AES.encode $ ClientError text
+    WS.sendClose conn ("internal state error" :: Text)
 
 processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
 processSupervisorCmds state (URLRoom room) = do
@@ -91,17 +94,32 @@ processSupervisorCmds state (URLRoom room) = do
             return $ Just $ putRoomToState state room
         Nothing -> do
             say $ "client: no url in state: fix me"
-            liftIO $ sendInvalidParticipantState (getConnection state) "client: no url in state: fix me"
+            liftIO $ sendInvalidParticipantState (getConnection state) "client internal state error: no url in state: fix me"
             return Nothing
 processSupervisorCmds state NoImageError = do
     liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
 
+sendToWebOffer :: WS.Connection -> Text -> IO ()
+sendToWebOffer conn offer = do
+    WS.sendTextData conn $ json where
+        json = AES.encode $ ClientOffer offer
+
+sendToWebCandidate :: WS.Connection -> Text -> IO ()
+sendToWebCandidate conn candidate = do
+    WS.sendTextData conn $ json where
+        json = AES.encode $ ClientCandidate candidate
+
 processRoomCmds :: ParticipantState -> RoomToClientMsg -> Process (Maybe ParticipantState)
 processRoomCmds state NoImageOnWebError = do
     liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
---TODO process Offer BS.ByteString | Candidate BS.ByteString
+processRoomCmds state (Offer offer) = do
+    liftIO $ sendToWebOffer (getConnection state) (pack $ BS.unpack offer)
+    return Nothing
+processRoomCmds state (Candidate candidate) = do
+    liftIO $ sendToWebCandidate (getConnection state) (pack $ BS.unpack candidate)
+    return Nothing
 
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do

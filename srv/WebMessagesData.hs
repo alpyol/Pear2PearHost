@@ -22,4 +22,4 @@ instance ToJSON ClientCandidate where
 data ClientError = ClientError Text
 
 instance ToJSON ClientError where
-    toJSON (ClientError message) = object ["msgType" .= ("Error" :: Text), "candidate" .= message]
+    toJSON (ClientError message) = object ["msgType" .= ("Error" :: Text), "msg" .= message]
