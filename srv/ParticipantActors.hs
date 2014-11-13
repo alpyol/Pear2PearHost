@@ -62,20 +62,19 @@ processSocketMesssage state CloseMsg = do
     die ("Socket closed - close participant" :: String)
     return Nothing
 
+sendToWebNoURL :: WS.Connection -> IO ()
+sendToWebNoURL conn = do
+    WS.sendTextData conn ("{\"msgType\":\"NoRequestedURL\"}" :: Text)
+    WS.sendClose conn ("no url" :: Text)
+
 processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
 processSupervisorCmds state NoImageError = do
-    liftIO $
-        let conn = getConnection state
-        in do
-            WS.sendTextData conn ("{\"msgType\":\"NoRequestedURL\"}" :: Text)
-            WS.sendClose conn ("no url" :: Text)
+    liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
 
---TODO process - NoImageOnWebError
---RoomToClientMsg
 processRoomCmds :: ParticipantState -> RoomToClientMsg -> Process (Maybe ParticipantState)
 processRoomCmds state NoImageOnWebError = do
-    say $ "client: got: NoImageOnWebError error TODO send to client socket"
+    liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
 
 participantProcess :: ParticipantState -> Process ()
