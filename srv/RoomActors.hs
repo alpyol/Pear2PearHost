@@ -60,29 +60,64 @@ processAddImageCmd json state = do
             say $ "no image in json: " ++ show json
             return Nothing
 
-processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
-processNoImageCmd json state = do
+--type ProcessWithState = Process (Maybe RoomState)
 
-    -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
+withCpid :: Object -> RoomState -> (DP.ProcessId -> Process (Maybe RoomState)) -> Process (Maybe RoomState)
+withCpid json state handler' = do
+    -- {"msgType":"...","cpid":"pid://127.0.0.1:10501:0:17"}
     let clientStr :: Maybe String = (parseMaybe (.: "cpid") json)
     case clientStr of
         (Just clientStr) ->
             case str2Pid clientStr of
-                (Right client) -> do
-                    send client NoImageOnWebError
-                    return Nothing
+                (Right client) -> handler' client
                 (Left err) -> do
                     say $ "room: invalid client pid in json: " ++ show clientStr ++ " error: " ++ err
                     return Nothing
         Nothing -> do
             say $ "room: no client pid in json: " ++ show json
-            return Nothing
+            return Nothing    
+
+processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
+processNoImageCmd json state = do
+    -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
+    withCpid json state $ \client -> do
+        send client NoImageOnWebError
+        return Nothing
+
+processSendIceCandidateCmd :: Object -> RoomState -> Process (Maybe RoomState)
+processSendIceCandidateCmd json state = do
+    -- {"msgType":"SendIceCandidate","cpid":"pid://127.0.0.1:10501:0:17","candidate":"..."}
+    withCpid json state $ \client -> do
+        let candidateOpt :: Maybe String = (parseMaybe (.: "candidate") json)
+        case candidateOpt of
+            (Just candidate) -> do
+                send client $ Candidate $ BS.pack candidate
+                return Nothing
+            Nothing -> do
+                say $ "room: no candidate in json: " ++ show json
+                return Nothing
+
+processSendOfferCmd :: Object -> RoomState -> Process (Maybe RoomState)
+processSendOfferCmd json state = do
+    -- {"msgType":"SendOffer","cpid":"pid://127.0.0.1:10501:0:17","offer":"..."}
+    withCpid json state $ \client -> do
+    withCpid json state $ \client -> do
+        let offerOpt :: Maybe String = (parseMaybe (.: "offer") json)
+        case offerOpt of
+            (Just offer) -> do
+                send client $ Offer $ BS.pack offer
+                return Nothing
+            Nothing -> do
+                say $ "room: no offer in json: " ++ show json
+                return Nothing
 
 processSocketMesssage :: RoomState -> SocketMsg -> Process (Maybe RoomState)
 processSocketMesssage state (SocketMsg msg) =
     case jsonObjectWithType msg of
-        (Right ("ImageAdded"    , json)) -> processAddImageCmd json state
-        (Right ("NoRequestedURL", json)) -> processNoImageCmd  json state
+        (Right ("ImageAdded"      , json)) -> processAddImageCmd         json state
+        (Right ("NoRequestedURL"  , json)) -> processNoImageCmd          json state
+        (Right ("SendIceCandidate", json)) -> processSendIceCandidateCmd json state
+        (Right ("SendOffer"       , json)) -> processSendOfferCmd        json state
         (Right (cmd, json)) -> do
             say $ "room got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing

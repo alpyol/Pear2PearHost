@@ -28,7 +28,7 @@ data SupervisorToClientMsg = NoImageError
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SupervisorToClientMsg )
 
-data RoomToClientMsg = NoImageOnWebError
+data RoomToClientMsg = NoImageOnWebError | Offer BS.ByteString | Candidate BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''RoomToClientMsg )
 
