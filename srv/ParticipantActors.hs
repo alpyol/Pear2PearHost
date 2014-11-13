@@ -14,7 +14,12 @@ import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
 
-import ActorsMessages (SocketMsg(..), FromClientMsg(..), SupervisorToClientMsg(..))
+import ActorsMessages (
+    SocketMsg(..),
+    FromClientMsg(..),
+    SupervisorToClientMsg(..),
+    RoomToClientMsg(..))
+
 import ActorsCmn (jsonObjectWithType)
 
 data ParticipantState = ParticipantState { getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
@@ -66,12 +71,20 @@ processSupervisorCmds state NoImageError = do
             WS.sendClose conn ("no url" :: Text)
     return Nothing
 
+--TODO process - NoImageOnWebError
+--RoomToClientMsg
+processRoomCmds :: ParticipantState -> RoomToClientMsg -> Process (Maybe ParticipantState)
+processRoomCmds state NoImageOnWebError = do
+    say $ "client: got: NoImageOnWebError error TODO send to client socket"
+    return Nothing
+
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do
     -- Test our matches in order against each message in the queue
     newState <- receiveWait [
         match (processSocketMesssage state),
         match (processSupervisorCmds state),
+        match (processRoomCmds       state),
         match logMessage ]
     participantProcess $ fromMaybe state newState
 
@@ -84,6 +97,7 @@ participantSocketProcess processId conn = do
             send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
+            say $ "client: did receiveData msg: " ++ BS.unpack msg
             send processId (SocketMsg msg)
             participantSocketProcess processId conn
         (WS.DataMessage (WS.Binary msg)) ->
@@ -94,7 +108,7 @@ participantApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> I
 participantApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
-    liftIO $ Prelude.putStrLn "got new client connection"
+    liftIO $ Prelude.putStrLn "client: got new client connection"
     participantProcessID <- forkProcess node (participantProcess $ initialParticipantState supervisorProcessID conn)
     runProcess node $ participantSocketProcess participantProcessID conn
 

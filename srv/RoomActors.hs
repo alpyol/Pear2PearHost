@@ -33,8 +33,18 @@ pid2Str :: DP.ProcessId -> String
 pid2Str = BS.unpack . b64encode . BN.encode where
     b64encode str = BS.fromChunks [B64.encode (B.concat $ BS.toChunks str)]
 
+b64decode :: BS.ByteString -> Either String BS.ByteString
+b64decode str = case B64.decode (B.concat $ BS.toChunks str) of
+    (Right str) -> Right $ BS.fromChunks [str]
+    (Left  err) -> Left $ "can not parse base64: " ++ err
+
 str2Pid :: String -> Either String DP.ProcessId
-str2Pid str = undefined
+str2Pid str = do
+    case b64decode $ BS.pack str of
+        (Right decoded) -> case (BN.decodeOrFail decoded) of
+            (Right (_, _, res  )) -> Right res
+            (Left  (_, _, descr)) -> Left $ "can not parse pid: " ++ (BS.unpack decoded) ++ " error: " ++ descr
+        (Left  err) -> Left  err
 
 initialRoomState :: DP.ProcessId -> WS.Connection -> RoomState 
 initialRoomState = RoomState []
@@ -58,34 +68,20 @@ processAddImageCmd json state = do
             say $ "no image in json: " ++ show json
             return Nothing
 
-b64decode :: BS.ByteString -> Maybe BS.ByteString
-b64decode str = 
-    case res of
-        (Right res) -> Just $ BS.fromChunks [res]
-        (Left _) -> Nothing
-        where
-            res = B64.decode (B.concat $ BS.toChunks str)
-
-b64decodeStr :: String -> Maybe String
-b64decodeStr str = BS.unpack <$> (b64decode $ BS.pack str)
-
 processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
 processNoImageCmd json state = do
 
     -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
-    let clientStr :: Maybe String = (parseMaybe (.: "cpid") json) >>= b64decodeStr
+    let clientStr :: Maybe String = (parseMaybe (.: "cpid") json)
     case clientStr of
         (Just clientStr) ->
-            case res of
-                (Right (_, _, client)) -> do
-                    say $ "room: send to client NoImageOnWebError: " ++ show client
+            case str2Pid clientStr of
+                (Right client) -> do
                     send client NoImageOnWebError
                     return Nothing
-                (Left _) -> do
-                    say $ "room: invalid client pid in json: " ++ show clientStr
+                (Left err) -> do
+                    say $ "room: invalid client pid in json: " ++ show clientStr ++ " error: " ++ err
                     return Nothing
-
-                where res = (BN.decodeOrFail (BS.pack clientStr)) 
         Nothing -> do
             say $ "room: no client pid in json: " ++ show json
             return Nothing
@@ -96,7 +92,6 @@ processSocketMesssage state (SocketMsg msg) =
         (Right ("ImageAdded"    , json)) -> processAddImageCmd json state
         (Right ("NoRequestedURL", json)) -> processNoImageCmd  json state
         (Right (cmd, json)) -> do
-            -- TODO process command: NoRequestedURL json: fromList [("cpid",String "pid://127.0.0.1:10501:0:17"),("msgType",String "NoRequestedURL")]
             say $ "room got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing
         Left description -> do
@@ -117,7 +112,7 @@ processClientMsgs state (RequestOffer client url) = do
         in do
             -- TODO handle exception on send here ???
             say $ "room: send to socket: " ++ unpack cmd
-            liftIO $ WS.sendTextData conn cmd
+        in liftIO $ WS.sendTextData conn cmd
     return Nothing
 
 roomProcess :: RoomState -> Process ()
