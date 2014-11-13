@@ -7,7 +7,7 @@ import qualified Data.Map  as M
 import qualified Data.List as L
 import Data.Maybe
 
-import ActorsMessages (FromRoomMsg(..), FromClientMsg(..), SupervisorToClientMsg(..))
+import ActorsMessages (FromRoomMsg(..), ClientToSupervisorMsg(..), SupervisorToClientMsg(..))
 
 data SupervisorState = SupervisorState {
     getRoomsByURL :: M.Map BS.ByteString [DP.ProcessId],
@@ -74,11 +74,11 @@ processAddImage state (RoomClosedMsg closedRoom) = do
     say $ "- newState: " ++ show newState
     return $ Just newState
 
-processClientMsgs :: SupervisorState -> FromClientMsg -> Process (Maybe SupervisorState)
-processClientMsgs state offer@(RequestOffer client url) =
+processClientMsgs :: SupervisorState -> ClientToSupervisorMsg -> Process (Maybe SupervisorState)
+processClientMsgs state (GetRoom client url) =
     case getPidForURL state url of
         (Just (room, newState)) -> do
-            send room offer
+            send client (URLRoom room)
             return $ Just newState
         Nothing -> do
             send client NoImageError

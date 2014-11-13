@@ -22,7 +22,12 @@ import Text.Read
 import Control.Exception
 import Control.Applicative ((<$>))
 
-import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..), RoomToClientMsg(..))
+import ActorsMessages (
+    FromRoomMsg(..),
+    SocketMsg(..),
+    ClientToRoomMsg(..),
+    RoomToClientMsg(..))
+
 import ActorsCmn (jsonObjectWithType)
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
@@ -130,9 +135,8 @@ processSocketMesssage state CloseMsg = do
     die ("Socket closed - close room" :: String)
     return Nothing
 
-processClientMsgs :: RoomState -> FromClientMsg -> Process (Maybe RoomState)
+processClientMsgs :: RoomState -> ClientToRoomMsg -> Process (Maybe RoomState)
 processClientMsgs state (RequestOffer client url) = do
-
     let conn = getConnection state
         clt  = pid2Str client
         cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\",\"cpid\":\"" ++ clt ++ "\"}"

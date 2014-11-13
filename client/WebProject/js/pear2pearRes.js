@@ -163,18 +163,18 @@ function networkImageLoader(url, onload, onerror)
 var roomSocket = null;//new WebSocket("ws://localhost:27001/ws");
 var sentSrvCachedURLs = [];
 
+function containsObjInArr(a, obj) {
+    var i = a.length;
+    while (i--) {
+        if (a[i] === obj) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function processOnLoadImages(urls)
 {
-    function contains(a, obj) {
-        var i = a.length;
-        while (i--) {
-            if (a[i] === obj) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     if (roomSocket == null) {
         roomSocket = new WebSocket("ws://localhost:27001/ws");
 
@@ -187,7 +187,7 @@ function processOnLoadImages(urls)
             for (var i=0; i<urlsToSendAll.length; i++) {
 
                 var url = urlsToSendAll[i];
-                if (!contains(sentSrvCachedURLs, url)) {
+                if (!containsObjInArr(sentSrvCachedURLs, url)) {
                     urlsToSend.push(url);
                 }
             }
@@ -233,7 +233,7 @@ function processOnLoadImages(urls)
             for (var i=0; i<urls.length; i++) {
 
                 var url = urls[i];
-                if (!contains(sentSrvCachedURLs, url)) {
+                if (!containsObjInArr(sentSrvCachedURLs, url)) {
                     var obj = {msgType: "ImageAdded", url: url};
                     roomSocket.send(JSON.stringify(obj));
                     sentSrvCachedURLs.push(url)
@@ -252,13 +252,51 @@ function processServerSocketMessage(socket, msg)
     if (incomingMessage.msgType == 'RequestOffer') {
 
         console.log("got offer request: " + msg);
-        //var allURLs = Object.keys(cachedImageBlobsByURL);
+        var allURLs = Object.keys(cachedImageBlobsByURL);
 
-        //if (contains(allURLs, incomingMessage.url)) {
+        if (containsObjInArr(allURLs, incomingMessage.url)) {
 
+            var localPeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
+            try {
+                // Reliable Data Channels not yet supported in Chrome
+                var sendChannel = localPeerConnection.createDataChannel("sendDataChannel", {reliable: false});
+                console.log('Created send data channel');
+                console.log('Created local peer connection object localPeerConnection');
 
-        //} else
-        {
+                function gotLocalCandidate(event) {
+                    console.log('local ice callback');
+                    if (event.candidate) {
+                        console.log('Local ICE candidate: \n' + event.candidate.candidate);
+                        var obj = {msgType: "SendIceCandidate", candidate: JSON.stringify(event.candidate), cpid: incomingMessage.cpid};
+                        roomSocket.send(JSON.stringify(obj));
+                    }
+                }
+
+                localPeerConnection.onicecandidate = gotLocalCandidate;
+
+                function handleSendChannelStateChange() {
+                    var readyState = sendChannel.readyState;
+                    trace('Send channel state is: ' + readyState);
+                    if (readyState == "open") {
+                        console.log('!!!!! READY TO SEND !!!!!!');
+                    }
+                }
+
+                sendChannel.onopen  = handleSendChannelStateChange;
+                sendChannel.onclose = handleSendChannelStateChange;
+
+                function gotLocalDescription(desc) {
+                    localPeerConnection.setLocalDescription(desc);
+                    console.log('Offer from localPeerConnection \n' + desc.sdp);
+                    var obj = {msgType: "SendOffer", offer: JSON.stringify(desc), cpid: incomingMessage.cpid};
+                    roomSocket.send(JSON.stringify(obj));
+                }
+
+                localPeerConnection.createOffer(gotLocalDescription);
+            } catch (e) {
+                console.log('createDataChannel() failed with exception: ' + e.message);
+            }
+        } else {
             var obj = {msgType: "NoRequestedURL", cpid: incomingMessage.cpid};
             roomSocket.send(JSON.stringify(obj));
         }
@@ -298,24 +336,6 @@ function fromPearLoader(url, onload, onerror)
 //var sendChannel, receiveChannel;
 //
 //function createConnection() {
-//    var servers = null;
-//    window.localPeerConnection = new webkitRTCPeerConnection(servers,
-//        {optional: [{RtpDataChannels: true}]});
-//    trace('Created local peer connection object localPeerConnection');
-//
-//    try {
-//        // Reliable Data Channels not yet supported in Chrome
-//        sendChannel = localPeerConnection.createDataChannel("sendDataChannel",
-//            {reliable: false});
-//        trace('Created send data channel');
-//    } catch (e) {
-//        alert('Failed to create data channel. ' +
-//        'You need Chrome M25 or later with RtpDataChannel enabled');
-//        trace('createDataChannel() failed with exception: ' + e.message);
-//    }
-//    localPeerConnection.onicecandidate = gotLocalCandidate;
-//    sendChannel.onopen  = handleSendChannelStateChange;
-//    sendChannel.onclose = handleSendChannelStateChange;
 //
 //    window.remotePeerConnection = new webkitRTCPeerConnection(servers,
 //        {optional: [{RtpDataChannels: true}]});
@@ -324,7 +344,6 @@ function fromPearLoader(url, onload, onerror)
 //    remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
 //    remotePeerConnection.ondatachannel  = gotReceiveChannel;
 //
-//    localPeerConnection.createOffer(gotLocalDescription);
 //    startButton.disabled = true;
 //    closeButton.disabled = false;
 //}
@@ -355,25 +374,10 @@ function fromPearLoader(url, onload, onerror)
 //    dataChannelSend.placeholder = "Press Start, enter some text, then press Send.";
 //}
 //
-//function gotLocalDescription(desc) {
-//    localPeerConnection.setLocalDescription(desc);
-//    trace('Offer from localPeerConnection \n' + desc.sdp);
-//    remotePeerConnection.setRemoteDescription(desc);
-//    remotePeerConnection.createAnswer(gotRemoteDescription);
-//}
-//
 //function gotRemoteDescription(desc) {
 //    remotePeerConnection.setLocalDescription(desc);
 //    trace('Answer from remotePeerConnection \n' + desc.sdp);
 //    localPeerConnection.setRemoteDescription(desc);
-//}
-//
-//function gotLocalCandidate(event) {
-//    trace('local ice callback');
-//    if (event.candidate) {
-//        remotePeerConnection.addIceCandidate(event.candidate);
-//        trace('Local ICE candidate: \n' + event.candidate.candidate);
-//    }
 //}
 //
 //function gotRemoteIceCandidate(event) {
@@ -395,22 +399,6 @@ function fromPearLoader(url, onload, onerror)
 //function handleMessage(event) {
 //    trace('Received message: ' + event.data);
 //    document.getElementById("dataChannelReceive1").value = event.data;
-//}
-//
-//function handleSendChannelStateChange() {
-//    var readyState = sendChannel.readyState;
-//    trace('Send channel state is: ' + readyState);
-//    if (readyState == "open") {
-//        dataChannelSend.disabled = false;
-//        dataChannelSend.focus();
-//        dataChannelSend.placeholder = "";
-//        sendButton.disabled = false;
-//        closeButton.disabled = false;
-//    } else {
-//        dataChannelSend.disabled = true;
-//        sendButton.disabled = true;
-//        closeButton.disabled = true;
-//    }
 //}
 //
 //function handleReceiveChannelStateChange() {

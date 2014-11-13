@@ -13,19 +13,31 @@ import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
+import Control.Applicative ((<$>))
 
 import ActorsMessages (
     SocketMsg(..),
-    FromClientMsg(..),
     SupervisorToClientMsg(..),
-    RoomToClientMsg(..))
+    RoomToClientMsg(..),
+    ClientToSupervisorMsg(..),
+    ClientToRoomMsg(..))
 
 import ActorsCmn (jsonObjectWithType)
 
-data ParticipantState = ParticipantState { getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
+data ParticipantState = ParticipantState {
+    getSupervisor :: DP.ProcessId ,
+    getConnection :: WS.Connection,
+    getURL        :: Maybe BS.ByteString,
+    getRoom       :: Maybe DP.ProcessId }
 
 initialParticipantState :: DP.ProcessId -> WS.Connection -> ParticipantState
-initialParticipantState = ParticipantState
+initialParticipantState supervisor conn = ParticipantState supervisor conn Nothing Nothing
+
+putRoomToState :: ParticipantState -> DP.ProcessId -> ParticipantState
+putRoomToState state room = ParticipantState (getSupervisor state) (getConnection state) (getURL state) (Just room)
+
+putURLToState :: ParticipantState -> BS.ByteString -> ParticipantState
+putURLToState state url = ParticipantState (getSupervisor state) (getConnection state) (Just url) (getRoom state)
 
 logMessage :: BS.ByteString -> Process (Maybe ParticipantState)
 logMessage msg = do
@@ -35,12 +47,12 @@ logMessage msg = do
 processOfferCmd :: Object -> ParticipantState -> Process (Maybe ParticipantState)
 processOfferCmd json state = do
     -- {"type":"RequestOffer","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
-    let orlOpt :: Maybe String = parseMaybe (.: "url") json
+    let orlOpt :: Maybe BS.ByteString = BS.pack <$> parseMaybe (.: "url") json
     case orlOpt of
         (Just url) -> do
             self <- getSelfPid
-            send (getSupervisor state) (RequestOffer self (BS.pack url))
-            return Nothing
+            send (getSupervisor state) (GetRoom self url)
+            return $ Just $ putURLToState state url
         Nothing -> do
             say $ "client: no image url in json: " ++ show json
             return Nothing
@@ -49,15 +61,13 @@ processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe Partici
 processSocketMesssage state (SocketMsg msg) = do
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
-        (Right ("RequestOffer", json)) ->
-            processOfferCmd json state
+        (Right ("RequestOffer", json)) -> processOfferCmd json state
         (Right (cmd, json)) -> do
             say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing
         Left description -> do
             say description
             return Nothing
-    return Nothing
 processSocketMesssage state CloseMsg = do
     die ("Socket closed - close participant" :: String)
     return Nothing
@@ -67,7 +77,22 @@ sendToWebNoURL conn = do
     WS.sendTextData conn ("{\"msgType\":\"NoRequestedURL\"}" :: Text)
     WS.sendClose conn ("no url" :: Text)
 
+sendInvalidParticipantState :: WS.Connection -> Text -> IO ()
+sendInvalidParticipantState conn text = do
+    WS.sendTextData conn ("{\"msgType\":\"Error\"}" :: Text)
+    WS.sendClose conn ("no url" :: Text)
+
 processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
+processSupervisorCmds state (URLRoom room) = do
+    case (getURL state) of
+        (Just url) -> do
+            self <- getSelfPid
+            send room (RequestOffer self url)
+            return $ Just $ putRoomToState state room
+        Nothing -> do
+            say $ "client: no url in state: fix me"
+            liftIO $ sendInvalidParticipantState (getConnection state) "client: no url in state: fix me"
+            return Nothing
 processSupervisorCmds state NoImageError = do
     liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
@@ -76,6 +101,7 @@ processRoomCmds :: ParticipantState -> RoomToClientMsg -> Process (Maybe Partici
 processRoomCmds state NoImageOnWebError = do
     liftIO $ sendToWebNoURL $ getConnection state
     return Nothing
+--TODO process Offer BS.ByteString | Candidate BS.ByteString
 
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do

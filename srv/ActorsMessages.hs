@@ -3,10 +3,11 @@
 
 module ActorsMessages (
     FromRoomMsg(..),
-    SocketMsg(..),
-    FromClientMsg(..),
+    ClientToRoomMsg(..),
+    ClientToSupervisorMsg(..),
     SupervisorToClientMsg(..),
-    RoomToClientMsg(..)
+    RoomToClientMsg(..),
+    SocketMsg(..)
     ) where
 
 import Control.Distributed.Process as DP
@@ -20,11 +21,15 @@ data FromRoomMsg = URLAddedMsg DP.ProcessId BS.ByteString | RoomClosedMsg DP.Pro
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''FromRoomMsg )
 
-data FromClientMsg = RequestOffer DP.ProcessId BS.ByteString
+data ClientToRoomMsg = RequestOffer DP.ProcessId BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
-$( derive makeBinary ''FromClientMsg )
+$( derive makeBinary ''ClientToRoomMsg )
 
-data SupervisorToClientMsg = NoImageError
+data ClientToSupervisorMsg = GetRoom DP.ProcessId BS.ByteString
+    deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''ClientToSupervisorMsg )
+
+data SupervisorToClientMsg = NoImageError | URLRoom DP.ProcessId
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SupervisorToClientMsg )
 
