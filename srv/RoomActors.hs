@@ -16,7 +16,7 @@ import Data.Text
 import Data.Maybe
 import Data.Binary.Get
 import qualified Data.Binary as BN
-import qualified Data.ByteString.Base64 as B64
+import qualified Data.ByteString.Base64.Lazy as B64
 
 import Text.Read
 import Control.Exception
@@ -27,24 +27,16 @@ import ActorsCmn (jsonObjectWithType)
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
 
--- TODO use Data.ByteString.Base64.Lazy
-
 pid2Str :: DP.ProcessId -> String
-pid2Str = BS.unpack . b64encode . BN.encode where
-    b64encode str = BS.fromChunks [B64.encode (B.concat $ BS.toChunks str)]
-
-b64decode :: BS.ByteString -> Either String BS.ByteString
-b64decode str = case B64.decode (B.concat $ BS.toChunks str) of
-    (Right str) -> Right $ BS.fromChunks [str]
-    (Left  err) -> Left $ "can not parse base64: " ++ err
+pid2Str = BS.unpack . B64.encode . BN.encode
 
 str2Pid :: String -> Either String DP.ProcessId
 str2Pid str = do
-    case b64decode $ BS.pack str of
+    case B64.decode $ BS.pack str of
         (Right decoded) -> case (BN.decodeOrFail decoded) of
             (Right (_, _, res  )) -> Right res
             (Left  (_, _, descr)) -> Left $ "can not parse pid: " ++ (BS.unpack decoded) ++ " error: " ++ descr
-        (Left  err) -> Left  err
+        (Left  err) -> Left $ "can not parse base64: " ++ err
 
 initialRoomState :: DP.ProcessId -> WS.Connection -> RoomState 
 initialRoomState = RoomState []
@@ -112,7 +104,7 @@ processClientMsgs state (RequestOffer client url) = do
         in do
             -- TODO handle exception on send here ???
             say $ "room: send to socket: " ++ unpack cmd
-        in liftIO $ WS.sendTextData conn cmd
+            liftIO $ WS.sendTextData conn cmd
     return Nothing
 
 roomProcess :: RoomState -> Process ()
