@@ -9,20 +9,32 @@ import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
+import qualified Data.ByteString as B
 import qualified Data.Aeson as AES ((.:), decode)
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
 import Data.Binary.Get
 import qualified Data.Binary as BN
+import qualified Data.ByteString.Base64 as B64
 
 import Text.Read
 import Control.Exception
+import Control.Applicative ((<$>))
 
 import ActorsMessages (FromRoomMsg(..), SocketMsg(..), FromClientMsg(..), RoomToClientMsg(..))
 import ActorsCmn (jsonObjectWithType)
 
 data RoomState = RoomState { getRoomURLs :: [String], getSupervisor :: DP.ProcessId, getConnection :: WS.Connection }
+
+-- TODO use Data.ByteString.Base64.Lazy
+
+pid2Str :: DP.ProcessId -> String
+pid2Str = BS.unpack . b64encode . BN.encode where
+    b64encode str = BS.fromChunks [B64.encode (B.concat $ BS.toChunks str)]
+
+str2Pid :: String -> Either String DP.ProcessId
+str2Pid str = undefined
 
 initialRoomState :: DP.ProcessId -> WS.Connection -> RoomState 
 initialRoomState = RoomState []
@@ -46,11 +58,22 @@ processAddImageCmd json state = do
             say $ "no image in json: " ++ show json
             return Nothing
 
+b64decode :: BS.ByteString -> Maybe BS.ByteString
+b64decode str = 
+    case res of
+        (Right res) -> Just $ BS.fromChunks [res]
+        (Left _) -> Nothing
+        where
+            res = B64.decode (B.concat $ BS.toChunks str)
+
+b64decodeStr :: String -> Maybe String
+b64decodeStr str = BS.unpack <$> (b64decode $ BS.pack str)
+
 processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
 processNoImageCmd json state = do
 
     -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
-    let clientStr :: Maybe String = parseMaybe (.: "cpid") json
+    let clientStr :: Maybe String = (parseMaybe (.: "cpid") json) >>= b64decodeStr
     case clientStr of
         (Just clientStr) ->
             case res of
@@ -63,7 +86,6 @@ processNoImageCmd json state = do
                     return Nothing
 
                 where res = (BN.decodeOrFail (BS.pack clientStr)) 
-
         Nothing -> do
             say $ "room: no client pid in json: " ++ show json
             return Nothing
@@ -89,11 +111,13 @@ processSocketMesssage state CloseMsg = do
 processClientMsgs :: RoomState -> FromClientMsg -> Process (Maybe RoomState)
 processClientMsgs state (RequestOffer client url) = do
 
-    liftIO $ let conn = getConnection state
-                 cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\",\"cpid\":\"" ++ show client ++ "\"}"
-        in
+    let conn = getConnection state
+        clt  = pid2Str client
+        cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\",\"cpid\":\"" ++ clt ++ "\"}"
+        in do
             -- TODO handle exception on send here ???
-            WS.sendTextData conn cmd
+            say $ "room: send to socket: " ++ unpack cmd
+            liftIO $ WS.sendTextData conn cmd
     return Nothing
 
 roomProcess :: RoomState -> Process ()

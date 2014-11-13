@@ -248,10 +248,10 @@ function processOnLoadImages(urls)
 
 function processServerSocketMessage(socket, msg)
 {
-    var incomingMessage = JSON.parse(event.data);
+    var incomingMessage = JSON.parse(msg);
     if (incomingMessage.msgType == 'RequestOffer') {
 
-        console.log("got offer request: " + event.data);
+        console.log("got offer request: " + msg);
         //var allURLs = Object.keys(cachedImageBlobsByURL);
 
         //if (contains(allURLs, incomingMessage.url)) {
