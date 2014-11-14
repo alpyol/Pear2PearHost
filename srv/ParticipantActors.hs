@@ -1,12 +1,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings   #-}
 
-module ParticipantActors (runParticipantServer) where
-
-import qualified Network.WebSockets as WS
+module ParticipantActors (forkParticipantServer) where
 
 import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
+import Control.Distributed.WebSocket.Process
+import Control.Distributed.WebSocket.Types
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Aeson as AES (encode)
@@ -16,8 +16,9 @@ import Data.Text
 import Data.Maybe
 import Control.Applicative ((<$>))
 
+import GHC.Conc.Sync
+
 import ActorsMessages (
-    SocketMsg(..),
     SupervisorToClientMsg(..),
     ClientToSupervisorMsg(..),
     ClientToRoomMsg(..),
@@ -28,19 +29,19 @@ import WebMessagesData (ClientError(..), ClientOffer(..), ClientCandidate(..))
 import ActorsCmn (jsonObjectWithType)
 
 data ParticipantState = ParticipantState {
-    getSupervisor :: DP.ProcessId ,
-    getConnection :: WS.Connection,
-    getURL        :: Maybe BS.ByteString,
-    imgSrv        :: Maybe DP.ProcessId }
+    supervisor :: DP.ProcessId,
+    webSocket  :: DP.ProcessId,
+    getURL     :: Maybe BS.ByteString,
+    imgSrv     :: Maybe DP.ProcessId }
 
-initialParticipantState :: DP.ProcessId -> WS.Connection -> ParticipantState
-initialParticipantState supervisor conn = ParticipantState supervisor conn Nothing Nothing
+initialParticipantState :: DP.ProcessId -> DP.ProcessId -> ParticipantState
+initialParticipantState supervisor socket = ParticipantState supervisor socket Nothing Nothing
 
 putImgSrvToState :: ParticipantState -> DP.ProcessId -> ParticipantState
-putImgSrvToState state imgSrv = ParticipantState (getSupervisor state) (getConnection state) (getURL state) (Just imgSrv)
+putImgSrvToState state imgSrv = ParticipantState (supervisor state) (webSocket state) (getURL state) (Just imgSrv)
 
 putURLToState :: ParticipantState -> BS.ByteString -> ParticipantState
-putURLToState state url = ParticipantState (getSupervisor state) (getConnection state) (Just url) (imgSrv state)
+putURLToState state url = ParticipantState (supervisor state) (webSocket state) (Just url) (imgSrv state)
 
 logMessage :: BS.ByteString -> Process (Maybe ParticipantState)
 logMessage msg = do
@@ -54,14 +55,14 @@ processOfferCmd json state = do
     case orlOpt of
         (Just url) -> do
             self <- getSelfPid
-            send (getSupervisor state) (GetRoom self url)
+            send (supervisor state) (GetRoom self url)
             return $ Just $ putURLToState state url
         Nothing -> do
             say $ "client: no image url in json: " ++ show json
             return Nothing
 
-processSocketMesssage :: ParticipantState -> SocketMsg -> Process (Maybe ParticipantState)
-processSocketMesssage state (SocketMsg msg) = do
+processSocketMesssage :: ParticipantState -> Receive -> Process (Maybe ParticipantState)
+processSocketMesssage state (Text msg) = do
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
         (Right ("RequestOffer", json)) -> processOfferCmd json state
@@ -69,21 +70,21 @@ processSocketMesssage state (SocketMsg msg) = do
             say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing
         Left description -> do
-            say description
+            say $ "room: " ++ description
             return Nothing
-processSocketMesssage state CloseMsg = do
+processSocketMesssage state (Closed _ _) = do
     die ("Socket closed - close participant" :: String)
     return Nothing
 
-sendToWebNoURL :: WS.Connection -> IO ()
-sendToWebNoURL conn = do
-    WS.sendTextData conn ("{\"msgType\":\"NoRequestedURL\"}" :: Text)
-    WS.sendClose conn ("no url" :: Text)
+sendToWebNoURL :: DP.ProcessId -> Process ()
+sendToWebNoURL socket = do
+    send socket (SendTextData "{\"msgType\":\"NoRequestedURL\"}")
+    send socket (Close "no url")
 
-sendInvalidParticipantState :: WS.Connection -> Text -> IO ()
-sendInvalidParticipantState conn text = do
-    WS.sendTextData conn $ AES.encode $ ClientError text
-    WS.sendClose conn ("internal state error" :: Text)
+sendInvalidParticipantState :: DP.ProcessId -> Text -> Process ()
+sendInvalidParticipantState socket text = do
+    send socket (SendTextData $ AES.encode $ ClientError text)
+    send socket (Close "internal state error")
 
 processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
 processSupervisorCmds state (URLRoom room) = do
@@ -94,65 +95,42 @@ processSupervisorCmds state (URLRoom room) = do
             return Nothing
         Nothing -> do
             say $ "client: no url in state: fix me"
-            liftIO $ sendInvalidParticipantState (getConnection state) "client internal state error: no url in state: fix me"
+            sendInvalidParticipantState (webSocket state) "client internal state error: no url in state: fix me"
             return Nothing
 processSupervisorCmds state NoImageError = do
-    liftIO $ sendToWebNoURL $ getConnection state
+    sendToWebNoURL $ webSocket state
     return Nothing
 
-sendToWebOffer :: WS.Connection -> Text -> IO ()
-sendToWebOffer conn offer = do
-    WS.sendTextData conn $ json where
+sendToWebOffer :: DP.ProcessId -> Text -> Process ()
+sendToWebOffer socket offer = do
+    send socket $ SendTextData json where
         json = AES.encode $ ClientOffer offer
 
-sendToWebCandidate :: WS.Connection -> Text -> IO ()
-sendToWebCandidate conn candidate = do
-    WS.sendTextData conn $ json where
+sendToWebCandidate :: DP.ProcessId -> Text -> Process ()
+sendToWebCandidate socket candidate = do
+    send socket $ SendTextData json where
         json = AES.encode $ ClientCandidate candidate
 
 processRoomCmds :: ParticipantState -> ImgSrvToClientMsg -> Process (Maybe ParticipantState)
 processRoomCmds state (Offer imageSrv offer) = do
-    liftIO $ sendToWebOffer (getConnection state) (pack $ BS.unpack offer)
+    sendToWebOffer (webSocket state) (pack $ BS.unpack offer)
     return $ Just $ putImgSrvToState state imageSrv
 processRoomCmds state (Candidate imageSrv candidate) = do
-    liftIO $ sendToWebCandidate (getConnection state) (pack $ BS.unpack candidate)
+    sendToWebCandidate (webSocket state) (pack $ BS.unpack candidate)
     return $ Just $ putImgSrvToState state imageSrv
 
-participantProcess :: ParticipantState -> Process ()
-participantProcess state = do
+participantProcess' :: ParticipantState -> Process ()
+participantProcess' state = do
     -- Test our matches in order against each message in the queue
     newState <- receiveWait [
         match (processSocketMesssage state),
         match (processSupervisorCmds state),
         match (processRoomCmds       state),
         match logMessage ]
-    participantProcess $ fromMaybe state newState
+    participantProcess' $ fromMaybe state newState
 
-participantSocketProcess :: ProcessId -> WS.Connection -> Process ()
-participantSocketProcess processId conn = do
-    result <- liftIO $ WS.receive conn
-    case result of
-        (WS.ControlMessage (WS.Close code msg)) -> do
-            --say $ "did receiveData command with code: " ++ show code ++ " msg: " ++ BS.unpack msg
-            send processId CloseMsg
-            return ()
-        (WS.DataMessage (WS.Text msg)) -> do
-            say $ "client: did receiveData msg: " ++ BS.unpack msg
-            send processId (SocketMsg msg)
-            participantSocketProcess processId conn
-        (WS.DataMessage (WS.Binary msg)) ->
-            -- TODO send die to roomProcess
-            return ()
+participantProcess :: DP.ProcessId -> DP.ProcessId -> Process ()
+participantProcess supervisor socket = participantProcess' $ initialParticipantState supervisor socket
 
-participantApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
-participantApplication node supervisorProcessID pending = do
-    conn <- WS.acceptRequest pending
-
-    liftIO $ Prelude.putStrLn "client: got new client connection"
-    participantProcessID <- forkProcess node (participantProcess $ initialParticipantState supervisorProcessID conn)
-    runProcess node $ participantSocketProcess participantProcessID conn
-
-    return ()
-
-runParticipantServer :: LocalNode -> DP.ProcessId -> IO ()
-runParticipantServer node supervisor = WS.runServer "127.0.0.1" 27002 $ participantApplication node supervisor
+forkParticipantServer :: LocalNode -> DP.ProcessId -> IO (ThreadId)
+forkParticipantServer node supervisor = forkWebSocketProcess "127.0.0.1" 27002 node (participantProcess supervisor)

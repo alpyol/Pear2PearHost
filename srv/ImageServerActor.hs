@@ -1,27 +1,26 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module ImageServerActor (runImageServer) where
-
-import qualified Network.WebSockets as WS
+module ImageServerActor (forkImageServer) where
 
 import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
+import Control.Distributed.WebSocket.Process
+import Control.Distributed.WebSocket.Types
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Aeson.Types
 import Data.Maybe
 
-import ActorsMessages (
-    SocketMsg(..),
-    ImgSrvToClientMsg(..))
+import ActorsMessages (ImgSrvToClientMsg(..))
 
 import ActorsCmn (jsonObjectWithType, withCpid)
 
--- client :: Maybe DP.ProcessId, 
-data ImageServerState = ImageServerState { webSocket :: WS.Connection }
+import GHC.Conc.Sync
 
-initialImageServerState :: WS.Connection -> ImageServerState 
+data ImageServerState = ImageServerState { webSocket :: DP.ProcessId }
+
+initialImageServerState :: DP.ProcessId -> ImageServerState 
 initialImageServerState = ImageServerState
 
 logMessage :: BS.ByteString -> Process (Maybe ImageServerState)
@@ -57,8 +56,8 @@ processSendOfferCmd json state = do
                 say $ "room: no offer in json: " ++ show json
                 return Nothing
 
-processSocketMesssage :: ImageServerState -> SocketMsg -> Process (Maybe ImageServerState)
-processSocketMesssage state (SocketMsg msg) =
+processSocketMesssage :: ImageServerState -> Receive -> Process (Maybe ImageServerState)
+processSocketMesssage state (Text msg) =
     case jsonObjectWithType msg of
         (Right ("SendIceCandidate", json)) -> processSendIceCandidateCmd json state
         (Right ("SendOffer"       , json)) -> processSendOfferCmd        json state
@@ -68,47 +67,23 @@ processSocketMesssage state (SocketMsg msg) =
         Left description -> do
             say description
             return Nothing
-processSocketMesssage state CloseMsg = do
+processSocketMesssage state (Closed _ _) = do
     self <- getSelfPid
-    -- TODO send closed to client and process this in client
+    -- TODO !!!! send closed to client and process this in client
     -- send (getSupervisor state) (RoomClosedMsg self)
     die ("Socket closed - close room" :: String)
     return Nothing
 
-imageSrvProcess :: ImageServerState -> Process ()
-imageSrvProcess state = do
+imageSrvProcess' :: ImageServerState -> Process ()
+imageSrvProcess' state = do
     -- Test our matches in order against each message in the queue
     newState <- receiveWait [
         match (processSocketMesssage state),
         match logMessage ]
-    imageSrvProcess $ fromMaybe state newState
+    imageSrvProcess' $ fromMaybe state newState
 
---TODO refactor - create WebSocketProcess
-imageSrvSocketProcess :: ProcessId -> WS.Connection -> Process ()
-imageSrvSocketProcess processId conn = do
-    result <- liftIO $ WS.receive conn
-    case result of
-        (WS.ControlMessage (WS.Close code msg)) -> do
-            say $ "imageSrv: did receiveData command with code: " ++ show code ++ " msg: " ++ BS.unpack msg
-            send processId CloseMsg
-            return ()
-        (WS.DataMessage (WS.Text msg)) -> do
-            --say $ "room: did receiveData msg: " ++ BS.unpack msg
-            send processId (SocketMsg msg)
-            imageSrvSocketProcess processId conn
-        (WS.DataMessage (WS.Binary msg)) ->
-            -- TODO send die to roomProcess
-            return ()
+imageSrvProcess :: DP.ProcessId -> Process ()
+imageSrvProcess socket = imageSrvProcess' $ initialImageServerState socket
 
-imageSrvApplication :: LocalNode -> WS.PendingConnection -> IO ()
-imageSrvApplication node pending = do
-    conn <- WS.acceptRequest pending
-
-    liftIO $ Prelude.putStrLn "imgSrv: got new connection"
-    roomProcessID <- forkProcess node (imageSrvProcess $ initialImageServerState conn)
-    runProcess node $ imageSrvSocketProcess roomProcessID conn
-
-    return ()
-
-runImageServer :: LocalNode -> IO ()
-runImageServer node = WS.runServer "127.0.0.1" 27003 $ imageSrvApplication node
+forkImageServer :: LocalNode -> IO (ThreadId)
+forkImageServer node = forkWebSocketProcess "127.0.0.1" 27003 node imageSrvProcess
