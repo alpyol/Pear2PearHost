@@ -4,6 +4,7 @@ module WebMessagesData (
     ClientOffer(..),
     ClientCandidate(..),
     ClientError(..),
+    RequestOffer(..),
     toJSON) where
 
 import Data.Aeson.Types
@@ -23,3 +24,8 @@ data ClientError = ClientError Text
 
 instance ToJSON ClientError where
     toJSON (ClientError message) = object ["msgType" .= ("Error" :: Text), "msg" .= message]
+
+data RequestOffer = RequestOffer Text Text
+
+instance ToJSON RequestOffer where
+    toJSON (RequestOffer url cpid) = object ["msgType" .= ("RequestOffer" :: Text), "url" .= url, "cpid" .= cpid]

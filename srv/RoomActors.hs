@@ -10,7 +10,7 @@ import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.ByteString as B
-import qualified Data.Aeson as AES ((.:), decode)
+import qualified Data.Aeson as AES ((.:), decode, encode)
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
@@ -27,6 +27,8 @@ import ActorsMessages (
     SocketMsg(..),
     ClientToRoomMsg(..),
     RoomToClientMsg(..))
+
+import qualified WebMessagesData as WD (RequestOffer(..), toJSON)
 
 import ActorsCmn (jsonObjectWithType, withCpid)
 
@@ -93,13 +95,11 @@ processSocketMesssage state CloseMsg = do
 
 processClientMsgs :: RoomState -> ClientToRoomMsg -> Process (Maybe RoomState)
 processClientMsgs state (RequestOffer client url) = do
-    let conn = getConnection state
-        clt  = pid2Str client
-        cmd  = pack $ "{\"msgType\":\"RequestOffer\",\"url\":\"" ++ BS.unpack url ++ "\",\"cpid\":\"" ++ clt ++ "\"}"
+    let cmd = AES.encode $ WD.RequestOffer (pack $ BS.unpack url) (pack $ pid2Str client)
         in do
             -- TODO handle exception on send here ???
-            say $ "room: send to socket: " ++ unpack cmd
-            liftIO $ WS.sendTextData conn cmd
+            say $ "room: send to socket: " ++ BS.unpack cmd
+            liftIO $ WS.sendTextData (getConnection state) cmd
     return Nothing
 
 roomProcess :: RoomState -> Process ()
@@ -120,6 +120,7 @@ roomSocketProcess processId conn = do
             send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
+            --say $ "room: did receiveData msg: " ++ BS.unpack msg
             send processId (SocketMsg msg)
             roomSocketProcess processId conn
         (WS.DataMessage (WS.Binary msg)) ->
@@ -130,7 +131,6 @@ roomApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
 roomApplication node supervisorProcessID pending = do
     conn <- WS.acceptRequest pending
 
-    liftIO $ Prelude.putStrLn "room: got new connection"
     roomProcessID <- forkProcess node (roomProcess $ initialRoomState supervisorProcessID conn)
     runProcess node $ roomSocketProcess roomProcessID conn
 
