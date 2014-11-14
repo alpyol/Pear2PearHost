@@ -11,14 +11,10 @@ import Data.Binary
 import Data.Typeable
 import Data.DeriveTH
 
-data Send = SendTextData BS.ByteString
+data Send = SendTextData BS.ByteString | Close BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''Send )
 
-data Receive = Opened DP.ProcessId | Text BS.ByteString | Binary BS.ByteString | Close Word16 BS.ByteString
+data Receive = Text BS.ByteString | Binary BS.ByteString | Closed Word16 BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''Receive )
-
--- data FromRoomMsg = URLAddedMsg DP.ProcessId BS.ByteString | RoomClosedMsg DP.ProcessId
---     deriving (Show, Typeable {-!, Binary !-})
--- $( derive makeBinary ''FromRoomMsg )

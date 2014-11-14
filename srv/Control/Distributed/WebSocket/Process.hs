@@ -19,34 +19,31 @@ webSocketSendProcess conn = do
     receiveWait [ match (processSend conn), match (processSend conn) ]
     webSocketSendProcess conn
 
-webSocketReceiveProcess' :: ProcessId -> WS.Connection -> Process ()
-webSocketReceiveProcess' handler conn = do
+webSocketReceiveProcess :: ProcessId -> WS.Connection -> Process ()
+webSocketReceiveProcess handler conn = do
     result <- liftIO $ WS.receive conn
     case result of
         (WS.ControlMessage (WS.Close code msg)) -> do
-            send handler (Close code msg)
+            send handler (Closed code msg)
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
             send handler (Text msg)
-            webSocketReceiveProcess' handler conn
+            webSocketReceiveProcess handler conn
         (WS.DataMessage (WS.Binary msg)) -> do
             send handler (Binary msg)
-            webSocketReceiveProcess' handler conn
+            webSocketReceiveProcess handler conn
 
-webSocketReceiveProcess :: ProcessId -> ProcessId -> WS.Connection -> Process ()
-webSocketReceiveProcess handler pid conn = do
-    send handler (Opened pid)
-    webSocketReceiveProcess' handler conn
-
-webSocketApplication :: LocalNode -> DP.ProcessId -> WS.PendingConnection -> IO ()
-webSocketApplication node handler pending = do
+webSocketApplication :: LocalNode -> (DP.ProcessId -> Process ()) -> WS.PendingConnection -> IO ()
+webSocketApplication node acceptor pending = do
     conn <- WS.acceptRequest pending
 
     pid <- forkProcess node $ webSocketSendProcess conn
 
-    runProcess node $ webSocketReceiveProcess handler pid conn
+    handler <- forkProcess node $ acceptor pid
+
+    runProcess node $ webSocketReceiveProcess handler conn
     return ()
 
-forkWebSocketProcess :: String -> Int -> LocalNode -> DP.ProcessId -> IO (ThreadId)
-forkWebSocketProcess host port node handler = do
-    forkIO $ WS.runServer host port $ webSocketApplication node handler
+forkWebSocketProcess :: String -> Int -> LocalNode -> (DP.ProcessId -> Process ()) -> IO (ThreadId)
+forkWebSocketProcess host port node acceptor = do
+    forkIO $ WS.runServer host port $ webSocketApplication node acceptor
