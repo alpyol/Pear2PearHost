@@ -7,6 +7,7 @@ module ActorsMessages (
     ClientToSupervisorMsg(..),
     SupervisorToClientMsg(..),
     RoomToClientMsg(..),
+    ImgSrvToClientMsg(..),
     SocketMsg(..)
     ) where
 
@@ -33,9 +34,13 @@ data SupervisorToClientMsg = NoImageError | URLRoom DP.ProcessId
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SupervisorToClientMsg )
 
-data RoomToClientMsg = NoImageOnWebError | Offer BS.ByteString | Candidate BS.ByteString
+data RoomToClientMsg = NoImageOnWebError
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''RoomToClientMsg )
+
+data ImgSrvToClientMsg = Offer DP.ProcessId BS.ByteString | Candidate DP.ProcessId BS.ByteString
+    deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''ImgSrvToClientMsg )
 
 data SocketMsg = SocketMsg BS.ByteString | CloseMsg deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''SocketMsg )

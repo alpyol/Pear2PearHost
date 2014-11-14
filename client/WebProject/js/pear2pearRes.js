@@ -252,54 +252,89 @@ function processServerSocketMessage(socket, msg)
     if (incomingMessage.msgType == 'RequestOffer') {
 
         console.log("got offer request: " + msg);
-        var allURLs = Object.keys(cachedImageBlobsByURL);
+        var imageBlob = cachedImageBlobsByURL[incomingMessage.url];
 
-        if (containsObjInArr(allURLs, incomingMessage.url)) {
-
-            var localPeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
-            try {
-                // Reliable Data Channels not yet supported in Chrome
-                var sendChannel = localPeerConnection.createDataChannel("sendDataChannel", {reliable: false});
-                console.log('Created send data channel');
-                console.log('Created local peer connection object localPeerConnection');
-
-                function gotLocalCandidate(event) {
-                    console.log('local ice callback');
-                    if (event.candidate) {
-                        //console.log('Local ICE candidate: \n' + event.candidate.candidate);
-                        var obj = {msgType: "SendIceCandidate", candidate: JSON.stringify(event.candidate), cpid: incomingMessage.cpid};
-                        socket.send(JSON.stringify(obj));
-                    }
-                }
-
-                localPeerConnection.onicecandidate = gotLocalCandidate;
-
-                function handleSendChannelStateChange() {
-                    var readyState = sendChannel.readyState;
-                    trace('Send channel state is: ' + readyState);
-                    if (readyState == "open") {
-                        console.log('!!!!! READY TO SEND !!!!!!');
-                    }
-                }
-
-                sendChannel.onopen  = handleSendChannelStateChange;
-                sendChannel.onclose = handleSendChannelStateChange;
-
-                function gotLocalDescription(desc) {
-                    localPeerConnection.setLocalDescription(desc);
-                    //console.log('Offer from localPeerConnection \n' + desc.sdp);
-                    var obj = {msgType: "SendOffer", offer: JSON.stringify(desc), cpid: incomingMessage.cpid};
-                    socket.send(JSON.stringify(obj));
-                }
-
-                localPeerConnection.createOffer(gotLocalDescription);
-            } catch (e) {
-                console.log('createDataChannel() failed with exception: ' + e.message);
-            }
+        if (imageBlob != null) {
+            processRequestOffer(imageBlob, incomingMessage)
         } else {
             var obj = {msgType: "NoRequestedURL", cpid: incomingMessage.cpid};
             socket.send(JSON.stringify(obj));
         }
+    }
+}
+
+function processRequestOffer(imageBlob, incomingMessage)
+{
+    var dataToSend = [];
+
+    var serverSocket = new WebSocket("ws://localhost:27003/ws");
+
+    serverSocket.onopen = function() {
+        for (var i=0; i<dataToSend.length; i++) {
+            serverSocket.send(dataToSend[i]);
+        }
+        dataToSend = [];
+    };
+
+    serverSocket.onmessage = function(event) {
+    };
+
+    serverSocket.onerror = function(error) {
+        serverSocket = null;
+    };
+
+    serverSocket.onclose = function(event) {
+        serverSocket = null;
+    };
+
+    function socketSend(msg)
+    {
+        if (serverSocket.readyState == WebSocket.OPEN) {
+            serverSocket.send(msg);
+        } else {
+            dataToSend.push(msg);
+        }
+    }
+
+    var localPeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
+    try {
+        // Reliable Data Channels not yet supported in Chrome
+        var sendChannel = localPeerConnection.createDataChannel("sendDataChannel", {reliable: false});
+        console.log('Created send data channel');
+        console.log('Created local peer connection object localPeerConnection');
+
+        function gotLocalCandidate(event) {
+            console.log('local ice callback');
+            if (event.candidate) {
+                //console.log('Local ICE candidate: \n' + event.candidate.candidate);
+                var obj = {msgType: "SendIceCandidate", candidate: JSON.stringify(event.candidate), cpid: incomingMessage.cpid};
+                socketSend(JSON.stringify(obj));
+            }
+        }
+
+        localPeerConnection.onicecandidate = gotLocalCandidate;
+
+        function handleSendChannelStateChange() {
+            var readyState = sendChannel.readyState;
+            trace('Send channel state is: ' + readyState);
+            if (readyState == "open") {
+                console.log('!!!!! READY TO SEND !!!!!!');
+            }
+        }
+
+        sendChannel.onopen  = handleSendChannelStateChange;
+        sendChannel.onclose = handleSendChannelStateChange;
+
+        function gotLocalDescription(desc) {
+            localPeerConnection.setLocalDescription(desc);
+            //console.log('Offer from localPeerConnection \n' + desc.sdp);
+            var obj = {msgType: "SendOffer", offer: JSON.stringify(desc), cpid: incomingMessage.cpid};
+            socketSend(JSON.stringify(obj));
+        }
+
+        localPeerConnection.createOffer(gotLocalDescription);
+    } catch (e) {
+        console.log('createDataChannel() failed with exception: ' + e.message);
     }
 }
 
@@ -328,9 +363,11 @@ function fromPearLoader(url, onload, onerror)
             console.log('Created remote peer connection object remotePeerConnection');
 
             function gotReceiveChannel(event) {
+                console.log('Receive Channel Callback');
             }
 
             function gotRemoteIceCandidate(event) {
+                console.log('remote ice callback');
             }
 
             remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
@@ -354,6 +391,8 @@ function fromPearLoader(url, onload, onerror)
                 if (remotePeerConnection) {
                     remotePeerConnection.setLocalDescription(desc);
                     console.log('!!!!! Answer from remotePeerConnection \n' + desc.sdp);
+                    var cmd = {msgType: "SendAnswer", answer: JSON.stringify(desc)};
+                    clientSocket.send(JSON.stringify(cmd));
                 }
             }
 

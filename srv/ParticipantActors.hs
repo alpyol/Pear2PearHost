@@ -21,7 +21,8 @@ import ActorsMessages (
     SupervisorToClientMsg(..),
     RoomToClientMsg(..),
     ClientToSupervisorMsg(..),
-    ClientToRoomMsg(..))
+    ClientToRoomMsg(..),
+    ImgSrvToClientMsg(..))
 
 import WebMessagesData
 
@@ -31,16 +32,16 @@ data ParticipantState = ParticipantState {
     getSupervisor :: DP.ProcessId ,
     getConnection :: WS.Connection,
     getURL        :: Maybe BS.ByteString,
-    getRoom       :: Maybe DP.ProcessId }
+    imgSrv        :: Maybe DP.ProcessId }
 
 initialParticipantState :: DP.ProcessId -> WS.Connection -> ParticipantState
 initialParticipantState supervisor conn = ParticipantState supervisor conn Nothing Nothing
 
-putRoomToState :: ParticipantState -> DP.ProcessId -> ParticipantState
-putRoomToState state room = ParticipantState (getSupervisor state) (getConnection state) (getURL state) (Just room)
+putImgSrvToState :: ParticipantState -> DP.ProcessId -> ParticipantState
+putImgSrvToState state imgSrv = ParticipantState (getSupervisor state) (getConnection state) (getURL state) (Just imgSrv)
 
 putURLToState :: ParticipantState -> BS.ByteString -> ParticipantState
-putURLToState state url = ParticipantState (getSupervisor state) (getConnection state) (Just url) (getRoom state)
+putURLToState state url = ParticipantState (getSupervisor state) (getConnection state) (Just url) (imgSrv state)
 
 logMessage :: BS.ByteString -> Process (Maybe ParticipantState)
 logMessage msg = do
@@ -91,7 +92,7 @@ processSupervisorCmds state (URLRoom room) = do
         (Just url) -> do
             self <- getSelfPid
             send room (RequestOffer self url)
-            return $ Just $ putRoomToState state room
+            return Nothing
         Nothing -> do
             say $ "client: no url in state: fix me"
             liftIO $ sendInvalidParticipantState (getConnection state) "client internal state error: no url in state: fix me"
@@ -110,16 +111,13 @@ sendToWebCandidate conn candidate = do
     WS.sendTextData conn $ json where
         json = AES.encode $ ClientCandidate candidate
 
-processRoomCmds :: ParticipantState -> RoomToClientMsg -> Process (Maybe ParticipantState)
-processRoomCmds state NoImageOnWebError = do
-    liftIO $ sendToWebNoURL $ getConnection state
-    return Nothing
-processRoomCmds state (Offer offer) = do
+processRoomCmds :: ParticipantState -> ImgSrvToClientMsg -> Process (Maybe ParticipantState)
+processRoomCmds state (Offer imageSrv offer) = do
     liftIO $ sendToWebOffer (getConnection state) (pack $ BS.unpack offer)
-    return Nothing
-processRoomCmds state (Candidate candidate) = do
+    return $ Just $ putImgSrvToState state imageSrv
+processRoomCmds state (Candidate imageSrv candidate) = do
     liftIO $ sendToWebCandidate (getConnection state) (pack $ BS.unpack candidate)
-    return Nothing
+    return $ Just $ putImgSrvToState state imageSrv
 
 participantProcess :: ParticipantState -> Process ()
 participantProcess state = do

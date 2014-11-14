@@ -5,9 +5,10 @@ import Control.Concurrent
 
 import Network.Transport.TCP
 
-import RoomActors (runRoomServer)
+import RoomActors        (runRoomServer)
 import ParticipantActors (runParticipantServer)
-import RoomsSupervisor (supervisorProcess)
+import RoomsSupervisor   (supervisorProcess)
+import ImageServerActor  (runImageServer)
 
 createAndInitActors = do
     Right t <- createTransport "127.0.0.1" "10501" defaultTCPParameters
@@ -17,5 +18,6 @@ createAndInitActors = do
 
     forkIO $ runRoomServer node supervisorProcessID
     forkIO $ runParticipantServer node supervisorProcessID
+    forkIO $ runImageServer node
 
     return ()
