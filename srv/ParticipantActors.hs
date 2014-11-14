@@ -19,12 +19,11 @@ import Control.Applicative ((<$>))
 import ActorsMessages (
     SocketMsg(..),
     SupervisorToClientMsg(..),
-    RoomToClientMsg(..),
     ClientToSupervisorMsg(..),
     ClientToRoomMsg(..),
     ImgSrvToClientMsg(..))
 
-import WebMessagesData
+import WebMessagesData (ClientError(..), ClientOffer(..), ClientCandidate(..))
 
 import ActorsCmn (jsonObjectWithType)
 

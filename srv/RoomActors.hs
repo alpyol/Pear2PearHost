@@ -9,18 +9,12 @@ import Control.Distributed.Process as DP
 import Control.Distributed.Process.Node
 
 import qualified Data.ByteString.Lazy.Char8 as BS
-import qualified Data.ByteString as B
 import qualified Data.Aeson as AES ((.:), decode, encode)
 import Data.Aeson.Types
 import Data.Text
 import Data.Maybe
-import Data.Binary.Get
 import qualified Data.Binary as BN
 import qualified Data.ByteString.Base64.Lazy as B64
-
-import Text.Read
-import Control.Exception
-import Control.Applicative ((<$>))
 
 import ActorsMessages (
     FromRoomMsg(..),
@@ -120,7 +114,6 @@ roomSocketProcess processId conn = do
             send processId CloseMsg
             return ()
         (WS.DataMessage (WS.Text msg)) -> do
-            --say $ "room: did receiveData msg: " ++ BS.unpack msg
             send processId (SocketMsg msg)
             roomSocketProcess processId conn
         (WS.DataMessage (WS.Binary msg)) ->

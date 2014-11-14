@@ -8,7 +8,7 @@ import Control.Distributed.Process as DP
 import qualified Data.Binary as BN
 import qualified Data.ByteString.Base64.Lazy as B64
 import qualified Data.ByteString.Lazy.Char8 as BS
-import qualified Data.Aeson as AES ((.:), decode)
+import qualified Data.Aeson as AES (decode)
 import Data.Aeson.Types
 
 jsonObjectWithType :: BS.ByteString -> Either String (String, Object)

@@ -3,16 +3,9 @@
 {-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-import Data.IORef (IORef, newIORef, atomicWriteIORef, readIORef)             
+import Data.IORef (IORef, newIORef, atomicWriteIORef, readIORef)
 import Yesod
 import Data.Text hiding (count)
-import Data.Char (isPunctuation, isSpace)
-import Data.Monoid (mappend)
-import Data.Text (Text)
-import Control.Exception (finally)
-import Control.Monad (forM_, forever)
-import Control.Concurrent (MVar, newMVar, modifyMVar_, modifyMVar, readMVar)
-import Control.Monad.IO.Class (liftIO)
 
 import Actors
 
