@@ -7,7 +7,8 @@ module ActorsMessages (
     ClientToSupervisorMsg(..),
     SupervisorToClientMsg(..),
     RoomToClientMsg(..),
-    ImgSrvToClientMsg(..)
+    ImgSrvToClientMsg(..),
+    ClientToImgSrvMsg(..)
     ) where
 
 import Control.Distributed.Process as DP
@@ -24,6 +25,10 @@ $( derive makeBinary ''FromRoomMsg )
 data ClientToRoomMsg = RequestOffer DP.ProcessId BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''ClientToRoomMsg )
+
+data ClientToImgSrvMsg = SendAnswer BS.ByteString
+    deriving (Show, Typeable {-!, Binary !-})
+$( derive makeBinary ''ClientToImgSrvMsg )
 
 data ClientToSupervisorMsg = GetRoom DP.ProcessId BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})

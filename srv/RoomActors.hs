@@ -40,7 +40,6 @@ logMessage msg = do
 
 processAddImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
 processAddImageCmd json state = do
-
     -- {"msgType":"ImageAdded","url":"https://pp.vk.me/c624927/v624927433/8eaa/xxCjYjDRAxk.jpg"}
     let addedImage :: Maybe String = parseMaybe (.: "url") json
     case addedImage of
@@ -90,7 +89,7 @@ roomProcess' state = do
     -- Test our matches in order against each message in the queue
     newState <- receiveWait [
         match (processSocketMesssage state),
-        match (processClientMsgs state),
+        match (processClientMsgs     state),
         match logMessage ]
     roomProcess' $ fromMaybe state newState
 

@@ -22,7 +22,8 @@ import ActorsMessages (
     SupervisorToClientMsg(..),
     ClientToSupervisorMsg(..),
     ClientToRoomMsg(..),
-    ImgSrvToClientMsg(..))
+    ImgSrvToClientMsg(..),
+    ClientToImgSrvMsg(..))
 
 import WebMessagesData (ClientError(..), ClientOffer(..), ClientCandidate(..))
 
@@ -61,11 +62,30 @@ processOfferCmd json state = do
             say $ "client: no image url in json: " ++ show json
             return Nothing
 
+processSendAnswerCmd :: Object -> ParticipantState -> Process (Maybe ParticipantState)
+processSendAnswerCmd json state = do
+    -- {"type":"SendAnswer","answer":"..."}
+    let answerOpt :: Maybe BS.ByteString = BS.pack <$> parseMaybe (.: "answer") json
+    case answerOpt of
+        (Just answer) -> do
+            case imgSrv state of
+                (Just imgSrv) -> do
+                    send imgSrv (SendAnswer answer)
+                    return Nothing
+                Nothing -> do
+                    say $ "client: invalid internal state, no imgSrv: fix me"
+                    sendInvalidParticipantState (webSocket state) "client: invalid internal state, no imgSrv: fix me"
+                    return Nothing
+        Nothing -> do
+            say $ "client: no image url in json: " ++ show json
+            return Nothing
+
 processSocketMesssage :: ParticipantState -> Receive -> Process (Maybe ParticipantState)
 processSocketMesssage state (Text msg) = do
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
-        (Right ("RequestOffer", json)) -> processOfferCmd json state
+        (Right ("RequestOffer", json)) -> processOfferCmd      json state
+        (Right ("SendAnswer"  , json)) -> processSendAnswerCmd json state
         (Right (cmd, json)) -> do
             say $ "client: got unsupported command: " ++ cmd ++ " json: " ++ show json
             return Nothing

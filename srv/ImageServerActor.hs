@@ -8,15 +8,19 @@ import Control.Distributed.Process.Node
 import Control.Distributed.WebSocket.Process
 import Control.Distributed.WebSocket.Types
 
+import qualified Data.Aeson as AES (encode)
 import qualified Data.ByteString.Lazy.Char8 as BS
 import Data.Aeson.Types
 import Data.Maybe
+import Data.Text
 
-import ActorsMessages (ImgSrvToClientMsg(..))
+import ActorsMessages (ImgSrvToClientMsg(..), ClientToImgSrvMsg(..))
 
 import ActorsCmn (jsonObjectWithType, withCpid)
 
 import GHC.Conc.Sync
+
+import WebMessagesData (Answer(..))
 
 data ImageServerState = ImageServerState { webSocket :: DP.ProcessId }
 
@@ -69,9 +73,12 @@ processSocketMesssage state (Text msg) =
             return Nothing
 processSocketMesssage state (Closed _ _) = do
     self <- getSelfPid
-    -- TODO !!!! send closed to client and process this in client
-    -- send (getSupervisor state) (RoomClosedMsg self)
     die ("Socket closed - close room" :: String)
+    return Nothing
+
+processClientMesssage :: ImageServerState -> ClientToImgSrvMsg -> Process (Maybe ImageServerState)
+processClientMesssage state (SendAnswer answer) = do
+    send (webSocket state) $ SendTextData $ AES.encode $ Answer (pack $ BS.unpack answer)
     return Nothing
 
 imageSrvProcess' :: ImageServerState -> Process ()
@@ -79,6 +86,7 @@ imageSrvProcess' state = do
     -- Test our matches in order against each message in the queue
     newState <- receiveWait [
         match (processSocketMesssage state),
+        match (processClientMesssage state),
         match logMessage ]
     imageSrvProcess' $ fromMaybe state newState
 

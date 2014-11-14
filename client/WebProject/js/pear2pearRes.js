@@ -251,7 +251,7 @@ function processServerSocketMessage(socket, msg)
     var incomingMessage = JSON.parse(msg);
     if (incomingMessage.msgType == 'RequestOffer') {
 
-        console.log("got offer request: " + msg);
+        //console.log("got offer request: " + msg);
         var imageBlob = cachedImageBlobsByURL[incomingMessage.url];
 
         if (imageBlob != null) {
@@ -276,7 +276,18 @@ function processRequestOffer(imageBlob, incomingMessage)
         dataToSend = [];
     };
 
+    var localPeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
+
     serverSocket.onmessage = function(event) {
+
+        var answer = JSON.parse(event.data);
+        if (answer.msgType == 'Answer') {
+
+            var desc = new RTCSessionDescription(JSON.parse(answer.answer));
+            localPeerConnection.setRemoteDescription(desc);
+            console.log("localPeerConnection.setRemoteDescription OK");
+        } else {
+        }
     };
 
     serverSocket.onerror = function(error) {
@@ -296,15 +307,14 @@ function processRequestOffer(imageBlob, incomingMessage)
         }
     }
 
-    var localPeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
     try {
         // Reliable Data Channels not yet supported in Chrome
         var sendChannel = localPeerConnection.createDataChannel("sendDataChannel", {reliable: false});
-        console.log('Created send data channel');
-        console.log('Created local peer connection object localPeerConnection');
+        //console.log('Created send data channel');
+        //console.log('Created local peer connection object localPeerConnection');
 
         function gotLocalCandidate(event) {
-            console.log('local ice callback');
+            //console.log('local ice callback');
             if (event.candidate) {
                 //console.log('Local ICE candidate: \n' + event.candidate.candidate);
                 var obj = {msgType: "SendIceCandidate", candidate: JSON.stringify(event.candidate), cpid: incomingMessage.cpid};
@@ -348,7 +358,7 @@ function fromPearLoader(url, onload, onerror)
 
         var cmd = {msgType: "RequestOffer", url: url};
         clientSocket.send(JSON.stringify(cmd));
-        console.log("cmd sent: " + JSON.stringify(cmd));
+        //console.log("cmd sent: " + JSON.stringify(cmd));
     };
 
     clientSocket.onmessage = function(event) {
@@ -360,14 +370,20 @@ function fromPearLoader(url, onload, onerror)
             }
 
             remotePeerConnection = new webkitRTCPeerConnection(null, {optional: [{RtpDataChannels: true}]});
-            console.log('Created remote peer connection object remotePeerConnection');
+            //console.log('Created remote peer connection object remotePeerConnection');
 
             function gotReceiveChannel(event) {
-                console.log('Receive Channel Callback');
+                console.log('Receive Channel Callback TODO');
+                //receiveChannel = event.channel;
+                //receiveChannel.onmessage = handleMessage;
+                //receiveChannel.onopen  = handleReceiveChannelStateChange;
+                //receiveChannel.onclose = handleReceiveChannelStateChange;
             }
 
             function gotRemoteIceCandidate(event) {
-                console.log('remote ice callback');
+                console.log('remote ice callback TODO');
+                if (event.candidate) {
+                }
             }
 
             remotePeerConnection.onicecandidate = gotRemoteIceCandidate;
@@ -376,7 +392,7 @@ function fromPearLoader(url, onload, onerror)
             return remotePeerConnection
         }
 
-        console.log("msg: " + event.data);
+        //console.log("msg: " + event.data);
         var incomingMessage = JSON.parse(event.data);
         if (incomingMessage.msgType == 'NoRequestedURL') {
             onerror('no image for url: ' + url)
@@ -390,7 +406,7 @@ function fromPearLoader(url, onload, onerror)
 
                 if (remotePeerConnection) {
                     remotePeerConnection.setLocalDescription(desc);
-                    console.log('!!!!! Answer from remotePeerConnection \n' + desc.sdp);
+                    //console.log('!!!!! Answer from remotePeerConnection \n' + desc.sdp);
                     var cmd = {msgType: "SendAnswer", answer: JSON.stringify(desc)};
                     clientSocket.send(JSON.stringify(cmd));
                 }
@@ -417,7 +433,7 @@ function fromPearLoader(url, onload, onerror)
     };
 
     clientSocket.onclose = function(event) {
-        console.log("client connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
+        //console.log("client connection closed code: " +  + event.code + ' reason: ' + event.reason + ' event.wasClean: ' + event.wasClean);
         remotePeerConnection = null;
         clientSocket = null;
     };
