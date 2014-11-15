@@ -25,7 +25,11 @@ import ActorsMessages (
     ImgSrvToClientMsg(..),
     ClientToImgSrvMsg(..))
 
-import WebMessagesData (ClientError(..), ClientOffer(..), ClientCandidate(..))
+import WebMessagesData (
+    ClientError(..),
+    ClientOffer(..),
+    ClientCandidate(..),
+    ClientNoImageError(..))
 
 import ActorsCmn (jsonObjectWithType)
 
@@ -98,7 +102,7 @@ processSocketMesssage state (Closed _ _) = do
 
 sendToWebNoURL :: DP.ProcessId -> Process ()
 sendToWebNoURL socket = do
-    send socket (SendTextData "{\"msgType\":\"NoRequestedURL\"}")
+    send socket (SendTextData $ AES.encode ClientNoImageError)
     send socket (Close "no url")
 
 sendInvalidParticipantState :: DP.ProcessId -> Text -> Process ()

@@ -44,7 +44,7 @@ getPidForURL state url =
         urlsByRooms = getURLsByRoom state
 
         rooms = M.findWithDefault [] url roomsByURL
-        room   = listToMaybe rooms
+        room  = listToMaybe rooms
 
         (first:leftRooms) = rooms
         newRoomsByURL = M.insert url (leftRooms ++ [first]) roomsByURL

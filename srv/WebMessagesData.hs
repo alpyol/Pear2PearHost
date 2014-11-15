@@ -4,6 +4,7 @@ module WebMessagesData (
     ClientOffer(..),
     ClientCandidate(..),
     ClientError(..),
+    ClientNoImageError(..),
     RequestOffer(..),
     Answer(..),
     toJSON) where
@@ -25,6 +26,11 @@ data ClientError = ClientError Text
 
 instance ToJSON ClientError where
     toJSON (ClientError message) = object ["msgType" .= ("Error" :: Text), "msg" .= message]
+
+data ClientNoImageError = ClientNoImageError
+
+instance ToJSON ClientNoImageError where
+    toJSON ClientNoImageError = object ["msgType" .= ("NoRequestedURL" :: Text)]
 
 data RequestOffer = RequestOffer Text Text
 
