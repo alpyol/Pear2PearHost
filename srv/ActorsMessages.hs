@@ -26,7 +26,7 @@ data ClientToRoomMsg = RequestOffer DP.ProcessId BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''ClientToRoomMsg )
 
-data ClientToImgSrvMsg = SendAnswer BS.ByteString
+data ClientToImgSrvMsg = SendAnswer BS.ByteString | SendRemoteIceCandidate BS.ByteString
     deriving (Show, Typeable {-!, Binary !-})
 $( derive makeBinary ''ClientToImgSrvMsg )
 

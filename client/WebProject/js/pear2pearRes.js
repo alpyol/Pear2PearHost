@@ -286,7 +286,13 @@ function processRequestOffer(imageBlob, incomingMessage)
             var desc = new RTCSessionDescription(JSON.parse(answer.answer));
             localPeerConnection.setRemoteDescription(desc);
             console.log("localPeerConnection.setRemoteDescription OK");
+        } else if (answer.msgType == 'Candidate') {
+
+            var candidate = new RTCIceCandidate(JSON.parse(answer.candidate));
+            localPeerConnection.addIceCandidate(candidate);
         } else {
+
+            localPeerConnection = null;
         }
     };
 
@@ -326,7 +332,7 @@ function processRequestOffer(imageBlob, incomingMessage)
 
         function handleSendChannelStateChange() {
             var readyState = sendChannel.readyState;
-            trace('Send channel state is: ' + readyState);
+            console.log('Send channel state is: ' + readyState);
             if (readyState == "open") {
                 console.log('!!!!! READY TO SEND !!!!!!');
             }
@@ -374,15 +380,13 @@ function fromPearLoader(url, onload, onerror)
 
             function gotReceiveChannel(event) {
                 console.log('Receive Channel Callback TODO');
-                //receiveChannel = event.channel;
-                //receiveChannel.onmessage = handleMessage;
-                //receiveChannel.onopen  = handleReceiveChannelStateChange;
-                //receiveChannel.onclose = handleReceiveChannelStateChange;
             }
 
             function gotRemoteIceCandidate(event) {
                 console.log('remote ice callback TODO');
                 if (event.candidate) {
+                    var cmd = {msgType: "SendRemoteIceCandidate", candidate: JSON.stringify(event.candidate)};
+                    clientSocket.send(JSON.stringify(cmd));
                 }
             }
 

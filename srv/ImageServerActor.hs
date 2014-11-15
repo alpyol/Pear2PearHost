@@ -20,7 +20,7 @@ import ActorsCmn (jsonObjectWithType, withCpid)
 
 import GHC.Conc.Sync
 
-import WebMessagesData (Answer(..))
+import WebMessagesData (Answer(..), ClientCandidate(..))
 
 data ImageServerState = ImageServerState { webSocket :: DP.ProcessId }
 
@@ -76,9 +76,13 @@ processSocketMesssage state (Closed _ _) = do
     die ("Socket closed - close room" :: String)
     return Nothing
 
+--data ClientToImgSrvMsg = SendAnswer BS.ByteString
 processClientMesssage :: ImageServerState -> ClientToImgSrvMsg -> Process (Maybe ImageServerState)
 processClientMesssage state (SendAnswer answer) = do
     send (webSocket state) $ SendTextData $ AES.encode $ Answer (pack $ BS.unpack answer)
+    return Nothing
+processClientMesssage state (SendRemoteIceCandidate candidate) = do
+    send (webSocket state) $ SendTextData $ AES.encode $ ClientCandidate (pack $ BS.unpack candidate)
     return Nothing
 
 imageSrvProcess' :: ImageServerState -> Process ()
