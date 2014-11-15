@@ -67,11 +67,11 @@ processOfferCmd json state = do
             return Nothing
 
 withImgSrv :: ParticipantState -> (DP.ProcessId -> Process (Maybe ParticipantState)) -> Process (Maybe ParticipantState)
-withImgSrv state handler = do
+withImgSrv state handler =
     case imgSrv state of
         (Just imgSrv) -> handler imgSrv
         Nothing -> do
-            say $ "client: invalid internal state, no imgSrv: fix me"
+            say "client: invalid internal state, no imgSrv: fix me"
             sendInvalidParticipantState (webSocket state) "client: invalid internal state, no imgSrv: fix me"
             return Nothing
 
@@ -80,7 +80,7 @@ processSendAnswerCmd json state = do
     -- {"type":"SendAnswer","answer":"..."}
     let answerOpt :: Maybe BS.ByteString = BS.pack <$> parseMaybe (.: "answer") json
     case answerOpt of
-        (Just answer) -> do
+        (Just answer) ->
             withImgSrv state $ \imgSrv -> do
                 send imgSrv (SendAnswer answer)
                 return Nothing
@@ -93,7 +93,7 @@ processIceCandidateCmd json state = do
     -- {"type":"SendAnswer","answer":"..."}
     let candidateOpt :: Maybe BS.ByteString = BS.pack <$> parseMaybe (.: "candidate") json
     case candidateOpt of
-        (Just candidate) -> do
+        (Just candidate) ->
             withImgSrv state $ \imgSrv -> do
                 send imgSrv (SendRemoteIceCandidate candidate)
                 return Nothing
@@ -102,7 +102,7 @@ processIceCandidateCmd json state = do
             return Nothing
 
 processSocketMesssage :: ParticipantState -> Receive -> Process (Maybe ParticipantState)
-processSocketMesssage state (Text msg) = do
+processSocketMesssage state (Text msg) =
     -- jsonObjectWithType :: BS.ByteString -> Either String (String, Object)
     case jsonObjectWithType msg of
         (Right ("RequestOffer"          , json)) -> processOfferCmd        json state
@@ -129,14 +129,14 @@ sendInvalidParticipantState socket text = do
     send socket (Close "internal state error")
 
 processSupervisorCmds :: ParticipantState -> SupervisorToClientMsg -> Process (Maybe ParticipantState)
-processSupervisorCmds state (URLRoom room) = do
-    case (getURL state) of
+processSupervisorCmds state (URLRoom room) =
+    case getURL state of
         (Just url) -> do
             self <- getSelfPid
             send room (RequestOffer self url)
             return Nothing
         Nothing -> do
-            say $ "client: no url in state: fix me"
+            say "client: no url in state: fix me"
             sendInvalidParticipantState (webSocket state) "client internal state error: no url in state: fix me"
             return Nothing
 processSupervisorCmds state NoImageError = do
@@ -144,12 +144,12 @@ processSupervisorCmds state NoImageError = do
     return Nothing
 
 sendToWebOffer :: DP.ProcessId -> Text -> Process ()
-sendToWebOffer socket offer = do
+sendToWebOffer socket offer =
     send socket $ SendTextData json where
         json = AES.encode $ ClientOffer offer
 
 sendToWebCandidate :: DP.ProcessId -> Text -> Process ()
-sendToWebCandidate socket candidate = do
+sendToWebCandidate socket candidate =
     send socket $ SendTextData json where
         json = AES.encode $ ClientCandidate candidate
 
@@ -174,5 +174,5 @@ participantProcess' state = do
 participantProcess :: DP.ProcessId -> DP.ProcessId -> Process ()
 participantProcess supervisor socket = participantProcess' $ initialParticipantState supervisor socket
 
-forkParticipantServer :: LocalNode -> DP.ProcessId -> IO (ThreadId)
+forkParticipantServer :: LocalNode -> DP.ProcessId -> IO ThreadId
 forkParticipantServer node supervisor = forkWebSocketProcess "127.0.0.1" 27002 node (participantProcess supervisor)

@@ -33,10 +33,10 @@ logMessage msg = do
     return Nothing
 
 processSendIceCandidateCmd :: Object -> ImageServerState -> Process (Maybe ImageServerState)
-processSendIceCandidateCmd json state = do
+processSendIceCandidateCmd json state =
     -- {"msgType":"SendIceCandidate","cpid":"pid://127.0.0.1:10501:0:17","candidate":"..."}
     withCpid json Nothing $ \client -> do
-        let candidateOpt :: Maybe String = (parseMaybe (.: "candidate") json)
+        let candidateOpt :: Maybe String = parseMaybe (.: "candidate") json
         case candidateOpt of
             (Just candidate) -> do
                 self <- getSelfPid
@@ -47,10 +47,10 @@ processSendIceCandidateCmd json state = do
                 return Nothing
 
 processSendOfferCmd :: Object -> ImageServerState -> Process (Maybe ImageServerState)
-processSendOfferCmd json state = do
+processSendOfferCmd json state =
     -- {"msgType":"SendOffer","cpid":"pid://127.0.0.1:10501:0:17","offer":"..."}
     withCpid json Nothing $ \client -> do
-        let offerOpt :: Maybe String = (parseMaybe (.: "offer") json)
+        let offerOpt :: Maybe String = parseMaybe (.: "offer") json
         case offerOpt of
             (Just offer) -> do
                 self <- getSelfPid
@@ -97,5 +97,5 @@ imageSrvProcess' state = do
 imageSrvProcess :: DP.ProcessId -> Process ()
 imageSrvProcess socket = imageSrvProcess' $ initialImageServerState socket
 
-forkImageServer :: LocalNode -> IO (ThreadId)
+forkImageServer :: LocalNode -> IO ThreadId
 forkImageServer node = forkWebSocketProcess "127.0.0.1" 27003 node imageSrvProcess

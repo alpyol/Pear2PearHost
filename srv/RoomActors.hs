@@ -31,7 +31,7 @@ initialRoomState :: DP.ProcessId -> DP.ProcessId -> RoomState
 initialRoomState = RoomState
 
 putWebSocket :: RoomState -> DP.ProcessId -> RoomState 
-putWebSocket state socket = RoomState (supervisor state) socket
+putWebSocket state = RoomState $ supervisor state
 
 logMessage :: BS.ByteString -> Process (Maybe RoomState)
 logMessage msg = do
@@ -52,7 +52,7 @@ processAddImageCmd json state = do
             return Nothing
 
 processNoImageCmd :: Object -> RoomState -> Process (Maybe RoomState)
-processNoImageCmd json state = do
+processNoImageCmd json state =
     -- {"msgType":"NoRequestedURL","cpid":"pid://127.0.0.1:10501:0:17"}
     withCpid json Nothing $ \client -> do
         send client NoImageOnWebError
@@ -96,5 +96,5 @@ roomProcess' state = do
 roomProcess :: DP.ProcessId -> DP.ProcessId -> Process ()
 roomProcess supervisor socket = roomProcess' $ initialRoomState supervisor socket
 
-forkRoomServer :: LocalNode -> DP.ProcessId -> IO (ThreadId)
+forkRoomServer :: LocalNode -> DP.ProcessId -> IO ThreadId
 forkRoomServer node supervisor = forkWebSocketProcess "127.0.0.1" 27001 node (roomProcess supervisor)

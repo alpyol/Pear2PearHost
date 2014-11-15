@@ -25,7 +25,7 @@ jsonObjectWithType jsonStr =
 withCpid :: Object -> a -> (DP.ProcessId -> Process a) -> Process a
 withCpid json defValue handler' = do
     -- {"msgType":"...","cpid":"pid://127.0.0.1:10501:0:17"}
-    let clientStr :: Maybe String = (parseMaybe (.: "cpid") json)
+    let clientStr :: Maybe String = parseMaybe (.: "cpid") json
     case clientStr of
         (Just clientStr) ->
             case str2Pid clientStr of
@@ -38,9 +38,9 @@ pid2Str :: DP.ProcessId -> String
 pid2Str = BS.unpack . B64.encode . BN.encode
 
 str2Pid :: String -> Either String DP.ProcessId
-str2Pid str = do
+str2Pid str =
     case B64.decode $ BS.pack str of
-        (Right decoded) -> case (BN.decodeOrFail decoded) of
+        (Right decoded) -> case BN.decodeOrFail decoded of
             (Right (_, _, res  )) -> Right res
-            (Left  (_, _, descr)) -> Left $ "can not parse pid: " ++ (BS.unpack decoded) ++ " error: " ++ descr
+            (Left  (_, _, descr)) -> Left $ "can not parse pid: " ++ BS.unpack decoded ++ " error: " ++ descr
         (Left  err) -> Left $ "can not parse base64: " ++ err

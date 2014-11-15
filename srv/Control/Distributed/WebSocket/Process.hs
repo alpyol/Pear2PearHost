@@ -44,6 +44,6 @@ webSocketApplication node acceptor pending = do
     runProcess node $ webSocketReceiveProcess handler conn
     return ()
 
-forkWebSocketProcess :: String -> Int -> LocalNode -> (DP.ProcessId -> Process ()) -> IO (ThreadId)
-forkWebSocketProcess host port node acceptor = do
+forkWebSocketProcess :: String -> Int -> LocalNode -> (DP.ProcessId -> Process ()) -> IO ThreadId
+forkWebSocketProcess host port node acceptor =
     forkIO $ WS.runServer host port $ webSocketApplication node acceptor
